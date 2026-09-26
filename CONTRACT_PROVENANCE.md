@@ -527,3 +527,38 @@ convenient re-sync: `test/fixtures/canonical-id.json` is in `package.json`'s
 fixture moved `publish.yml`, `RELEASING.md` and `docs/verification.md` on
 their own. Only the two frozen hashes in `test/naming.test.ts` are hand-written,
 and those are the third site behaving as documented.
+
+## What the vendored copy covers, and what it deliberately does not
+
+The copies pin **the address format Muster generates** — slugify, suffix,
+assignment, resolution — and the refusals that resolution can produce:
+`ambiguous`, `self`, `unknown`. That is the whole surface, and the boundary is
+not an accident of what was convenient to copy.
+
+They do **not** cover Tin Can's send-path vocabulary, because Muster never calls
+`send_peer` in product code. Muster produces addresses; Tin Can does the
+sending. The only mentions of that call in this repository are a doc comment in
+`naming.ts` describing what an address is for, and the contract suite asserting
+`outcome === "accepted"` on the happy path. Neither enumerates a refusal, so
+there is no unknown-refusal path here for a new one to fall through.
+
+Tin Can 2.0.0 is the worked example. It added a `duplicate_peer_moved` refusal,
+splitting the retry-whose-name-has-moved case out of `duplicate_send`. A
+consumer of send outcomes had to act on that — birddog did, and it was a real
+change for them. Muster owed nothing, and the 2.0.0 re-sync above correctly
+shows no such edit. The asymmetry is clean: Muster produces addresses and never
+consumes send outcomes; birddog consumes send outcomes and never produces an
+address. Neither repository inherits the other's obligations, and a vendored
+contract that tried to cover both would be wrong in both directions.
+
+**So the question at each re-sync is not "did Tin Can change".** It is: did
+anything Muster *generates or parses* change. Copying more than that is not
+caution, it is over-vendoring — it pins a surface Muster does not use, and the
+frozen hashes in `test/naming.test.ts` then move for reasons that have nothing
+to do with Muster, which is how a freeze stops meaning anything.
+
+**If Muster ever grows a send path, this boundary moves and the copy must widen
+with it** — `duplicate_peer_moved` and the rest of the send vocabulary would
+become a genuine re-sync obligation, and a re-sync that kept ignoring them would
+be a defect. Recorded now, while the reasoning is fresh, rather than discovered
+by whoever adds that path.

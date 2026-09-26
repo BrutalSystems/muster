@@ -10,6 +10,24 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**Recorded what the vendored Tin Can contract covers, and what it does not.**
+The copies pin the address format Muster generates and the refusals resolution
+can produce; they do not cover Tin Can's send-path vocabulary, because Muster
+never calls `send_peer` — it produces addresses and Tin Can does the sending.
+
+Tin Can 2.0.0 is the worked example: it added a `duplicate_peer_moved` refusal,
+which was a real change for a consumer of send outcomes and nothing at all for
+Muster. That boundary was being applied correctly at each re-sync and had never
+been written down, so the next person could have widened the copy out of
+caution — pinning a surface Muster does not use, which makes the frozen hashes
+move for reasons that do not concern it. `CONTRACT_PROVENANCE.md` now says so,
+including the condition that would reverse it: if Muster ever grows a send path,
+the copy has to widen with it.
+
+Documentation only.
+
 ## 1.0.2 — 2026-09-26
 
 **Re-synced the vendored Tin Can contract to 2.0.0.** No behaviour change: Tin
