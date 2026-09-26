@@ -1,5 +1,15 @@
 # Release notes
 
+Versions before 1.0.0 were released from an earlier repository whose history is
+not published. Their notes are kept below because they are the record of how
+Muster got here — but npm cannot verify their build provenance any more, since
+the commits they were built from no longer exist. Install 1.0.0 or later.
+
+From 1.0.0 this project uses ordinary semver: major for an incompatible
+interface or permission-default change, minor for a feature, patch for a fix.
+Before 1.0.0 the minor carried the breaking-change signal and features shipped
+as patches, so do not read an old entry under the new rule.
+
 ## Unreleased
 
 **`--options auto-approve-path`.** A launch option that records the launch
