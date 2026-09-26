@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.0.1 — 2026-09-26
 
 **The copyright holder is BrutalSystems, not the individual.** `LICENSE`,
 `TINCAN_LICENSE` and the README's licence line now name the organisation, which
