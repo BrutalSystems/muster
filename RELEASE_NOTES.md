@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.0.0 — 2026-09-26
 
 **`--options auto-approve-path`.** A launch option that records the launch
 directory as trusted in the profile the agent will use, so Claude's one-time
