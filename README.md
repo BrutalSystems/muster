@@ -1,10 +1,8 @@
-<img src="docs/assets/muster-logo.png" alt="" width="120" align="left" hspace="12" vspace="4">
+<img src="docs/assets/muster-logo.png" alt="" width="132">
 
 # Muster
 
 [![license](https://img.shields.io/github/license/BrutalSystems/muster)](./LICENSE)
-
-<br clear="left">
 
 **Launch coding agents on your machine, under containment you chose, and get
 back an address you can actually reach.**
