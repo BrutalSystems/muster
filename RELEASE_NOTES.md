@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.0.2 — 2026-09-26
 
 **Re-synced the vendored Tin Can contract to 2.0.0.** No behaviour change: Tin
 Can's 2.0.0 is a major because its repository was republished with a new history
