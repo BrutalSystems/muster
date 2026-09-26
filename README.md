@@ -1,4 +1,7 @@
-<img src="docs/assets/muster-logo.png" alt="" width="132">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/muster-logo-dark.png">
+  <img src="docs/assets/muster-logo.png" alt="" width="132">
+</picture>
 
 # Muster
 
@@ -166,7 +169,7 @@ Use the durable ID to stop a session whose runtime has renamed it.
 
 ## License and releases
 
-MIT © 2026 Mike Williams. See [LICENSE](./LICENSE). Vendored Tin Can code
+MIT © 2026 BrutalSystems. See [LICENSE](./LICENSE). Vendored Tin Can code
 retains source attribution and its [MIT notice](./TINCAN_LICENSE).
 
 Publishing is tag-driven and runs in GitHub Actions over OIDC trusted

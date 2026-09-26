@@ -10,6 +10,37 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**The copyright holder is BrutalSystems, not the individual.** `LICENSE`,
+`TINCAN_LICENSE` and the README's licence line now name the organisation, which
+is what tincan and birddog already say. `package.json`'s `author` stays
+`Mike Williams`: the organisation holds the copyright, the person wrote it, and
+those are different claims.
+
+`TINCAN_LICENSE` is Muster's vendored copy of Tin Can's licence, and it had
+drifted from its source — the same code was attributed to two different holders
+depending on which repository you read it in. It now tracks tincan's own
+`LICENSE` again.
+
+**The README logo no longer renders as a white slab on GitHub's dark theme.**
+The logo was an opaque PNG, 69% near-white, so on `#0d1117` the page opened with
+a bright rectangle above the title. There is now a dark variant selected by a
+`<picture>` element.
+
+Transparency alone would not have fixed it. The right-hand shield's fill sits at
+1.37:1 against GitHub's dark background — a hole in the mark, not a colour that
+merely looks dim — so the dark variant lifts it along its own hue to 2.51:1,
+beside the teal shield rather than ahead of it. The other marks already read on
+dark and are unchanged. Both variants keep the same canvas, so the theme swap
+moves nothing on the page.
+
+The logo files also carried several thousand near-identical off-whites from the
+generator that PNG was storing one by one. Collapsing the background to a single
+white halved both files, with no pixel of the mark altered.
+
+No code changed in this release.
+
 ## 1.0.0 — 2026-09-26
 
 **`--options auto-approve-path`.** A launch option that records the launch
