@@ -1,0 +1,13 @@
+{
+  // The suite, typechecked. `tsconfig.json` builds and so is scoped to `src/`;
+  // this one checks only, and covers the tests too. Without it a type error in
+  // a test is reported by nothing: Vitest transpiles with esbuild, which strips
+  // types without checking them (#74).
+  //
+  // It must live in the repository root. Elsewhere, `@types/node` no longer
+  // resolves and several hundred spurious "Cannot find module 'node:fs'"
+  // errors bury the real ones.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "rootDir": "." },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

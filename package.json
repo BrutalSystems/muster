@@ -1,0 +1,73 @@
+{
+  "name": "@brutalsystems/muster",
+  "version": "0.11.1",
+  "description": "Launch instructed, reachable local agent sessions",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "bin": {
+    "muster": "dist/muster.js"
+  },
+  "scripts": {
+    "build": "tsc && node scripts/prepare-bin.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.check.json",
+    "check": "npm run typecheck && npm test && node scripts/check-tarball.mjs",
+    "test:contract": "MUSTER_CONTRACT=1 vitest run test/contract.test.ts",
+    "postinstall": "node scripts/prepare-pty.mjs",
+    "pretest": "npm run build",
+    "pretest:contract": "npm run build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm test",
+    "version": "node scripts/stamp-release-notes.mjs && git add RELEASE_NOTES.md",
+    "postversion": "git push origin HEAD --follow-tags"
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "node-pty": "^1.1.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "prettier": "^3.9.8",
+    "typescript": "~5.9.0",
+    "vitest": "^4.1.11"
+  },
+  "license": "MIT",
+  "author": "Mike Williams",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "agents",
+    "agent-launcher"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BrutalSystems/muster.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BrutalSystems/muster/issues"
+  },
+  "homepage": "https://github.com/BrutalSystems/muster#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "scripts/prepare-pty.mjs",
+    "README.md",
+    "LICENSE",
+    "TINCAN_LICENSE",
+    "CANONICAL_ID.md",
+    "CONTRACT_PROVENANCE.md",
+    "test/fixtures/canonical-id.json"
+  ],
+  "allowScripts": {
+    "node-pty@1.1.0": true
+  }
+}

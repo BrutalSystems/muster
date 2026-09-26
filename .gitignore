@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+.muster-test/
+
+# Credentials, local runtime state, and publish artifacts
+.npmrc
+.env
+.env.*
+*.pem
+*.key
+*.log
+*.jsonl
+*.tgz
+.muster/
+
+# Private implementation history and live-probe records stay local
+EXECUTION_NOTES.md
+IMPLEMENTATION_HANDOFF_AMENDMENT.md
+IMPLEMENTATION_PLAN.md
+PROBE_RESULTS.md
+probes/
+.private/
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+.superpowers/

@@ -1,0 +1,173 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  id-token: write
+
+# Must match ci.yml's NPM_VERSION, which a test enforces. See RELEASING.md.
+env:
+  NPM_VERSION: "12.0.2"
+
+jobs:
+  publish:
+    if: github.repository == 'BrutalSystems/muster'
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # Pinned rather than latest: trusted publishing needs >= 11.5.1, but the
+      # packing npm also has to be the one ci.yml verified against. Installed
+      # before npm ci below, so the lockfile is resolved by the same npm.
+      - name: Pin npm (trusted publishing needs >= 11.5.1)
+        run: |
+          npm install -g npm@${{ env.NPM_VERSION }}
+          npm -v
+
+      - name: Tag matches package.json version
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "Tag v$tag does not match package.json version $pkg" >&2
+            exit 1
+          fi
+          echo "version=$pkg" >> "$GITHUB_OUTPUT"
+
+      - name: Extract and validate release notes
+        run: |
+          node scripts/extract-release-notes.mjs "${{ steps.version.outputs.version }}" > /tmp/release-notes.md
+
+      - name: Skip cleanly if already published
+        id: already-published
+        run: |
+          if npm view "@brutalsystems/muster@${{ steps.version.outputs.version }}" version 2>/dev/null; then
+            echo "Version already on the registry; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install, build, test
+        if: steps.already-published.outputs.skip == 'false'
+        run: npm ci && npm run typecheck && npm test
+
+      - name: Install tmux and Tin Can for the contract suite
+        if: steps.already-published.outputs.skip == 'false'
+        run: |
+          sudo apt-get update && sudo apt-get install -y tmux
+          contract_dir="$(mktemp -d)"
+          # The verified contract baseline, DERIVED rather than restated. The
+          # frozen fixture's tincan_version is the one place that says which
+          # Tin Can these vendored copies describe, so computing the pin from
+          # it makes "the pin lags the fixture" structurally impossible instead
+          # of merely detectable. Restating it here is what made v0.9.0 an
+          # inert tag: RELEASING.md moved, this line did not, and the contract
+          # step failed after the tag was already pushed. Still exact, never a
+          # range — a floating version would change what "verified" means with
+          # no commit. See CONTRACT_PROVENANCE.md.
+          ver="$(node -p "require('./test/fixtures/canonical-id.json').tincan_version")"
+          echo "Contract baseline derived from the frozen fixture: $ver"
+          npm install --prefix "$contract_dir" --no-save "@brutalsystems/tincan@$ver"
+          echo "MUSTER_TINCAN_BIN=$contract_dir/node_modules/.bin/tincan" >> "$GITHUB_ENV"
+
+      - name: Contract suite
+        if: steps.already-published.outputs.skip == 'false'
+        run: npm run test:contract
+
+      - name: Pack
+        if: steps.already-published.outputs.skip == 'false'
+        run: |
+          mkdir -p /tmp/release-staging
+          npm pack --pack-destination /tmp/release-staging --json > /tmp/pack-output-raw.json
+          node scripts/normalize-pack-json.mjs /tmp/pack-output-raw.json /tmp/pack-output.json
+
+      - name: Verify tarball contents
+        if: steps.already-published.outputs.skip == 'false'
+        run: node scripts/verify-tarball.mjs /tmp/pack-output.json
+
+      - name: Smoke-test the packed tarball
+        if: steps.already-published.outputs.skip == 'false'
+        run: |
+          tarball="$(node -p "require('/tmp/pack-output.json')[0].filename")"
+          prefix="$(mktemp -d)"
+          npm install --prefix "$prefix" "/tmp/release-staging/$tarball"
+          "$prefix/node_modules/.bin/muster" --help
+
+      - name: Publish
+        id: publish
+        if: steps.already-published.outputs.skip == 'false'
+        run: |
+          tarball="$(node -p "require('/tmp/pack-output.json')[0].filename")"
+          npm publish "/tmp/release-staging/$tarball" --provenance
+
+      - name: Confirm published
+        if: steps.already-published.outputs.skip == 'false'
+        run: |
+          # Ten minutes, not five. The documented lag is one to two, but a
+          # publish has taken longer than five in practice, and this step
+          # failing used to skip everything after it.
+          for i in $(seq 1 60); do
+            if npm view "@brutalsystems/muster@${{ steps.version.outputs.version }}" version dist.integrity 2>/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Published version did not resolve on the registry within ten minutes." >&2
+          echo "The publish itself succeeded; the steps after this one still run." >&2
+          exit 1
+
+      # `always() &&` because GitHub skips every later step once one fails, and
+      # a slow registry must not cost the artifact check or the Release. The
+      # publish's own outcome, not the run's, is what says the package is there.
+      - name: Verify the published artifact matches what was tested
+        if: always() && steps.publish.outcome == 'success'
+        run: |
+          mkdir -p /tmp/registry-check
+          ok=false
+          for i in $(seq 1 6); do
+            if npm pack "@brutalsystems/muster@${{ steps.version.outputs.version }}" \
+                --pack-destination /tmp/registry-check --json > /tmp/registry-pack-raw.json 2>/dev/null; then
+              ok=true
+              break
+            fi
+            sleep 10
+          done
+          if [ "$ok" != "true" ]; then
+            echo "Could not pack the published artifact from the registry yet; the publish itself succeeded, so not failing the run." >&2
+            exit 0
+          fi
+          node scripts/normalize-pack-json.mjs /tmp/registry-pack-raw.json /tmp/registry-pack.json
+          local_files="$(node -p "require('/tmp/pack-output.json')[0].files.map(f => f.path).sort().join('\n')")"
+          registry_files="$(node -p "require('/tmp/registry-pack.json')[0].files.map(f => f.path).sort().join('\n')")"
+          if [ "$local_files" != "$registry_files" ]; then
+            echo "Published tarball's file list differs from the one that was smoke-tested:" >&2
+            diff <(echo "$local_files") <(echo "$registry_files") >&2
+            exit 1
+          fi
+          echo "Published artifact's file list matches the smoke-tested tarball."
+
+      # Mandatory per the standard, so it is conditioned on the package being on
+      # the registry — just published, or already there on a re-run — and not on
+      # the run being green to this point.
+      - name: Create GitHub Release
+        if: always() && (steps.already-published.outputs.skip == 'true' || steps.publish.outcome == 'success')
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to do."
+            exit 0
+          fi
+          gh release create "$tag" --title "$tag" --notes-file /tmp/release-notes.md --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

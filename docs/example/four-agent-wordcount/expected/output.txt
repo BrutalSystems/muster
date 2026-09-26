@@ -1,0 +1,11 @@
+$ node --test
+ℹ tests 15
+ℹ pass 15
+ℹ fail 0
+
+$ node src/cli.js sample.txt 5
+the      8
+fox      5
+dog      4
+and      3
+not      3
