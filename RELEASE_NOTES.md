@@ -10,6 +10,37 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**Re-synced the vendored Tin Can contract to 2.0.0.** No behaviour change: Tin
+Can's 2.0.0 is a major because its repository was republished with a new history
+and npm reserves a version number forever, not because the address format moved.
+Upstream says so inside the copy itself — `CANONICAL_ID.md` now carries a
+paragraph stating that 2.0.0 "requires nothing of you" if you implement against
+the format. The fixture still holds the same 40 cases and not one expected value
+changed. The contract suite passes 4/4 against a real 2.0.0 binary.
+
+The one substantive edit is upstream's, and it is why this was worth taking now
+rather than at the next convenient re-sync: a peer identifier in the
+prefix-collision case that read as a client project name is now `billing-api`.
+`test/fixtures/canonical-id.json` is in `package.json`'s `files`, so the old
+string shipped in every tarball up to and including 1.0.1.
+
+**The usual way of verifying a re-sync was not available this time.** Every
+previous one diffed Tin Can across the two tags; the republish left that
+repository with one tag, so `v1.9.2` is not a revision there any more. What was
+diffed instead is Muster's own vendored copies against the `v2.0.0` tag, which
+answers Muster's actual question — what changed between what was vendored and
+what is being vendored — without depending on upstream's history at all. That is
+the form future re-syncs should take, and `CONTRACT_PROVENANCE.md` records why.
+
+No pin edit was needed. The Tin Can version in `publish.yml`, `RELEASING.md` and
+`docs/verification.md` is derived from the fixture's `tincan_version`, so
+updating the fixture moved all three on its own; only the two frozen SHA-256s in
+`test/naming.test.ts` are hand-written.
+
+No Muster code changed in this release.
+
 ## 1.0.1 — 2026-09-26
 
 **The copyright holder is BrutalSystems, not the individual.** `LICENSE`,

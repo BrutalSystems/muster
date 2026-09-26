@@ -44,11 +44,11 @@ test("contract copies remain frozen", () => {
   for (const [file, expected] of [
     [
       "../CANONICAL_ID.md",
-      "6e0dde03154956a480ae59f4d31b727ecc5a9e735c185fed6e4445f2574263a9",
+      "609634a58df2e288542732a3c95037a3e57efcaf63a36c26f6a4a7251c4804f2",
     ],
     [
       "./fixtures/canonical-id.json",
-      "b91406e068f6bec18629a4d2b9e91bc4d2e5a0487e4b6b4534fd5ba37c7f617a",
+      "bf686e97d91cba3bd3ee51ecb6d74ccf5e4978b3fcb783e441b1c01de5135285",
     ],
   ]) {
     expect(

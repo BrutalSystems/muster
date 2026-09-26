@@ -481,3 +481,49 @@ as a re-copy signal.
 updating the fixture moved CI on its own — the first cut where the failure class
 that produced v0.9.0 had nothing to act on. The drift hashes still moved, which
 is the third site behaving exactly as documented above.
+
+## Re-sync to Tin Can 2.0.0 — 2026-09-26
+
+Copies are from tag `v2.0.0`, commit `c588e8b3e119c530e55c8e59be892133f7b49631`.
+
+| File | SHA-256 |
+| --- | --- |
+| `CANONICAL_ID.md` | `609634a58df2e288542732a3c95037a3e57efcaf63a36c26f6a4a7251c4804f2` |
+| `test/fixtures/canonical-id.json` | `bf686e97d91cba3bd3ee51ecb6d74ccf5e4978b3fcb783e441b1c01de5135285` |
+
+`tincan_version: 2.0.0`, still 40 cases: 8 slugify, 7 suffix, 12 assignment,
+13 resolution. The format did not move. 2.0.0 is a major because Tin Can's
+repository was republished with a new history and npm reserves a version
+number forever — not because anything in the address format changed. Upstream
+says so in the copy itself, in a paragraph added to `CANONICAL_ID.md`'s
+"Changing this format": 2.0.0 "requires nothing of you".
+
+**The usual verification was not available, and the substitute is better here.**
+Every previous entry checked the claim by diffing upstream across the two tags
+— `v1.7.0..v1.9.2` last time. That is impossible now: the republish left
+tincan with a two-commit history and exactly one tag, so `v1.9.2` is not a
+revision in that repository any more and never will be. What was diffed instead
+is muster's own vendored copies, which *are* still in muster's history, against
+the `v2.0.0` tag content. That answers muster's actual question — what changed
+between what was vendored and what is being vendored — without depending on
+upstream's history at all, and it is the form future re-syncs should take.
+
+The entire delta across both files is three hunks:
+
+- `CANONICAL_ID.md`: the normative version line, `1.9.2` → `2.0.0`.
+- `CANONICAL_ID.md`: the new paragraph described above.
+- the fixture: `tincan_version`, and one `rawName` in the prefix-collision
+  case, `cxx-be` → `billing-api`.
+
+`naming.ts` does not appear and no expected value moved. The renamed peer is
+**input**, not an expected output, and that case's expected `canonicalId`
+names the *other* peer (`muster-b1`), so the rename cannot change what the
+case asserts. It is upstream removing a string that reads as a client project
+name, which is also why it was worth taking promptly rather than at the next
+convenient re-sync: `test/fixtures/canonical-id.json` is in `package.json`'s
+`files`, so the old string shipped in every tarball up to and including 1.0.1.
+
+**No pin edit, again.** The pins derive from `tincan_version`, so updating the
+fixture moved `publish.yml`, `RELEASING.md` and `docs/verification.md` on
+their own. Only the two frozen hashes in `test/naming.test.ts` are hand-written,
+and those are the third site behaving as documented.

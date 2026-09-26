@@ -1,6 +1,6 @@
 # Tin Can — Address Format
 
-> **Normative for `@brutalsystems/tincan` 1.9.2.**
+> **Normative for `@brutalsystems/tincan` 2.0.0.**
 >
 > This describes what Tin Can does today, precisely enough for another tool to
 > produce addresses Tin Can will resolve. It is a write-down of shipped
@@ -335,7 +335,10 @@ afterwards that the other tool disagreed.
 So:
 
 - **A change to any behaviour described here is a breaking change**, and ships
-  as a major version under semver.
+  as a major version under semver. The converse does not hold, and 2.0.0 is the
+  standing example: it marks the repository being republished with a new
+  history, and **nothing in this document changed with it**. If you implement
+  against this format, 2.0.0 requires nothing of you.
 - Update this document and the fixture in the same commit as the code.
 - Adding cases to the fixture is not a breaking change. Changing an existing
   expected value is.
