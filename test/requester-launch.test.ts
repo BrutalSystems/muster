@@ -366,7 +366,9 @@ test("the effective request, not the raw one, is what launchArgs may be given", 
   expect(claude[claude.indexOf("--permission-mode") + 1]).toBe("dontAsk");
   const settings = JSON.parse(claude[claude.indexOf("--settings") + 1]!);
   expect(settings.permissions.defaultMode).toBe("dontAsk");
-  expect(settings.sandbox.filesystem.denyWrite).toEqual(["/"]);
+  // Read-only denies the cwd (and its resolved spelling), not the whole disk.
+  expect(settings.sandbox.filesystem.denyWrite).toContain(req.cwd);
+  expect(settings.sandbox.filesystem.denyWrite).not.toContain("/");
   expect(settings.permissions.deny).toContain("Write");
 });
 
