@@ -469,3 +469,28 @@ test("an opencode task records a model that came from config, tagged config", as
     await m.close();
   }
 }, 20000);
+
+test("an OpenCode task gets PWD set to its launch directory, not the caller's", async () => {
+  // `opencode run` takes its working directory from PWD when it is set, ahead
+  // of the directory it was actually started in. An inherited PWD naming the
+  // caller's directory put the model's shell there instead of --cwd.
+  const f = await fixture({ PWD: "/caller/elsewhere" });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  try {
+    const task = asTask(
+      await m.run({
+        runtime: "opencode",
+        kind: "task",
+        prompt: "where am i",
+        cwd: f.root,
+      }),
+    );
+    await waitForTaskExit(m, task.id);
+    const start = (await lines(join(f.root, "starts.jsonl"))).find(
+      (s) => s.prompt === "where am i",
+    );
+    expect(start?.pwd).toBe(f.root);
+  } finally {
+    await m.close();
+  }
+});
