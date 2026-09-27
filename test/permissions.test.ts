@@ -1,7 +1,13 @@
 import { test, expect } from "vitest";
 import { configSchema } from "../src/config.js";
 import { runSchema, launchArgs, resolvePermissions } from "../src/guard.js";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  realpathSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { claudeConfigDir } from "../src/identity/claude.js";
@@ -194,15 +200,36 @@ test("the write root is the absolute form of the one config dir", () => {
   }
 });
 
-test("a read-only claude launch grants no write root at all", () => {
+test("a read-only claude launch denies its one write root, not the whole disk", () => {
+  // The sandbox's only default write root is the cwd, so denying it is the
+  // whole of read-only. Denying "/" also denied Claude Code's own temp dir,
+  // which it writes after every Bash call, and every command exited 1 (#41).
+  // A deny beats an allow, so allowing the temp dir back does not work.
   const dir = mkdtempSync(join(tmpdir(), "muster-cfg-"));
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), "muster-ro-")));
   const fs = claudeSettings(
-    launchArgs(claudeReq("read"), defaults, [], undefined, {
+    launchArgs({ ...claudeReq("read"), cwd }, defaults, [], undefined, {
       CLAUDE_CONFIG_DIR: dir,
     }),
   ).sandbox.filesystem;
-  expect(fs).toEqual({ denyWrite: ["/"] });
+  expect(fs).toEqual({ denyWrite: [cwd] });
   expect("allowWrite" in fs).toBe(false);
+});
+
+test("a read-only launch through a symlink denies both spellings of the cwd", () => {
+  // Claude Code 2.1.283 matched a deny given as the symlinked spelling, but
+  // read-only must not rest on one version normalising paths.
+  const real = realpathSync(mkdtempSync(join(tmpdir(), "muster-ro-")));
+  const link = join(realpathSync(tmpdir()), `muster-ro-link-${process.pid}`);
+  symlinkSync(real, link);
+  try {
+    const fs = claudeSettings(
+      launchArgs({ ...claudeReq("read"), cwd: link }, defaults),
+    ).sandbox.filesystem;
+    expect(fs.denyWrite).toEqual([link, real]);
+  } finally {
+    unlinkSync(link);
+  }
 });
 
 test("full access is unchanged: no sandbox, so no write roots to grant", () => {

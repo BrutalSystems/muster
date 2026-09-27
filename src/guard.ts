@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Config, RequesterProfile } from "./config.js";
@@ -598,7 +598,13 @@ export function launchArgs(
       allowUnsandboxedCommands: false,
       excludedCommands: [],
       filesystem: {
-        denyWrite: readonly ? ["/"] : [],
+        // The cwd is the sandbox's only default write root, so denying it
+        // is the whole of read-only. Not "/": that also denies Claude Code's
+        // own temp dir, which it writes after every Bash call, so every
+        // command exited 1 (#41) — and a deny beats an allow, so the temp dir
+        // cannot be allowed back. Both spellings of a symlinked cwd, so this
+        // does not rest on Claude normalising the path.
+        denyWrite: readonly ? writeRootSpellings(req.cwd) : [],
         // The agent's own memory lives under the config dir, outside the cwd
         // that Claude Code defaults the write root to, so Bash writes to it
         // failed with EPERM while the in-process file tools succeeded (#80).
@@ -634,6 +640,16 @@ export function launchArgs(
     "--",
     req.prompt,
   ];
+}
+/** A path as given and as resolved, once each. An unresolvable path (it does
+ *  not exist yet) is denied as given — nothing can be written through a
+ *  missing directory anyway. */
+function writeRootSpellings(path: string): string[] {
+  let real = path;
+  try {
+    real = realpathSync(path);
+  } catch {}
+  return [...new Set([path, real])];
 }
 export function launchEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const blocked =

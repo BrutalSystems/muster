@@ -39,6 +39,16 @@ Tasks and PTY sessions are unchanged.
 Running sessions still count toward `max_concurrent`, so a session nobody stops
 now holds its slot until it is stopped.
 
+**Bash works under `--level read` again** (#41). Every Bash call in a read-only
+Claude session reported exit 1, even when the command worked. That includes
+the default level, so the agent saw a failure on every command and often
+retried or gave up on working commands. The read-only sandbox denied writes to
+`/`, which also blocked the temp folder Claude Code writes after each Bash
+call, and a deny cannot be undone with an allow. The sandbox's only default
+write location is the launch directory, so muster now denies that instead.
+Writes to the launch directory, your home directory and `/tmp` are still
+refused. Checked with Claude Code 2.1.283.
+
 ## 1.1.1 — 2026-09-27
 
 **OpenCode now works in `--cwd`, not the directory muster was run from.** The
