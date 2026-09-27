@@ -246,3 +246,27 @@ test("an empty --token-env is refused rather than silently dropped", async () =>
     ),
   ).rejects.toThrow(/name of an environment variable/i);
 }, 20000);
+
+test("title takes an id and the title, and nothing else", async () => {
+  const f = await fixture();
+  const run = promisify(execFile);
+  await expect(
+    run(process.execPath, [cli, "title", "only-an-id"], { env: f.env }),
+  ).rejects.toThrow(/title requires an id and the title text/);
+}, 20000);
+
+test("title on an unknown id says so", async () => {
+  const f = await fixture();
+  const run = promisify(execFile);
+  await expect(
+    run(process.execPath, [cli, "title", "no-such-run", "x"], { env: f.env }),
+  ).rejects.toThrow(/\[muster\] unknown: /);
+}, 20000);
+
+test("--title is refused outside run rather than ignored", async () => {
+  const f = await fixture();
+  const run = promisify(execFile);
+  await expect(
+    run(process.execPath, [cli, "list", "--title", "x"], { env: f.env }),
+  ).rejects.toThrow(/--title applies only to run/);
+}, 20000);

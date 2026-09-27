@@ -6,7 +6,7 @@ import {
   mkdir,
   rm,
 } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -17,6 +17,8 @@ import {
   assertAllowedWorkspace,
   assertLevelExclusive,
   resolveLifecycle,
+  resolveTitle,
+  sanitiseTitle,
   resolveModel,
   launchArgs,
   launchEnv,
@@ -142,6 +144,11 @@ function configHomeVar(
   runtime: Runtime,
 ): "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | undefined {
   return AGENTS[runtime].configHomeVar ?? undefined;
+}
+
+/** What a window shows before readiness names the session: never the prompt. */
+function provisionalTitle(req: Pick<RunRequest, "cwd" | "runtime">): string {
+  return sanitiseTitle(`${basename(req.cwd)} · ${req.runtime}`);
 }
 
 export class Muster {
@@ -428,6 +435,12 @@ export class Muster {
       this.config,
       req.kind === "session" && typeof driver?.schedule === "function",
     );
+    // Beside the lifecycle and for the same reason: only the selected driver
+    // knows whether there will be a window to title.
+    const title = resolveTitle(
+      effective,
+      req.kind === "session" && typeof driver?.setTitle === "function",
+    );
     return {
       effective,
       terminal,
@@ -439,6 +452,7 @@ export class Muster {
       model,
       driver,
       lifecycle,
+      title,
       argv,
     };
   }
@@ -770,6 +784,7 @@ export class Muster {
     policy: ResolvedRequesterPolicy;
     driver?: TerminalHost;
     lifecycle: SessionLifecycle;
+    title: string | undefined;
     deadline: number;
   }): Promise<
     | { outcome: RunResult }
@@ -779,7 +794,16 @@ export class Muster {
         launched: { hostRef: string; pid: number };
       }
   > {
-    const { req, argv, runtimeEnv, policy, driver, lifecycle, deadline } = c;
+    const {
+      req,
+      argv,
+      runtimeEnv,
+      policy,
+      driver,
+      lifecycle,
+      title,
+      deadline,
+    } = c;
     let entry = c.entry;
     if (this.closing) throw new Error("Launch cancelled: Muster is closing");
     // From here a process may exist without the registry knowing it. See the
@@ -794,6 +818,16 @@ export class Muster {
       cwd: req.cwd,
       env: runtimeEnv,
       label: req.prompt.slice(0, 48),
+      // Provisional until readiness names the session, unless the caller named
+      // it: the window must never show a prompt fragment as its title.
+      ...(driver!.setTitle
+        ? {
+            title: {
+              text: title ?? provisionalTitle(req),
+              fromAgent: this.config.session.title_from_agent,
+            },
+          }
+        : {}),
       deadline,
     });
     const root = await processRef(launched.pid);
@@ -890,6 +924,7 @@ export class Muster {
     permissions: LaunchPermissions;
     terminal: TerminalApp;
     lifecycle: SessionLifecycle;
+    title: string | undefined;
     startedAt: number;
     deadline: number;
   }): Promise<RunResult> {
@@ -909,6 +944,7 @@ export class Muster {
       permissions,
       terminal,
       lifecycle,
+      title,
       startedAt,
       deadline,
     } = c;
@@ -1023,6 +1059,13 @@ export class Muster {
           const named = assignNames([
             { runtime, uuid: identity.id, rawName: metadata.rawName },
           ])[0]!;
+          const shownTitle = await this.nameTitle(
+            driver,
+            launched.hostRef,
+            title,
+            `${named.display} · ${req.runtime}`,
+            provisionalTitle(req),
+          );
           const peer = {
             kind: "session",
             ...permissions,
@@ -1055,6 +1098,7 @@ export class Muster {
               ? { idle_timeout: lifecycle.idleTimeout }
               : {}),
             ...(lifecycle.ttl ? { ttl: lifecycle.ttl } : {}),
+            ...(shownTitle ? { title: shownTitle } : {}),
             attach_hint: driver!.attachHint(launched.hostRef),
           } as SessionPeer;
           if (req.open) {
@@ -1122,6 +1166,7 @@ export class Muster {
       model,
       driver,
       lifecycle,
+      title,
       argv: plannedArgv,
     } = await this.plan(req, policy, requester, level);
     let argv = plannedArgv;
@@ -1209,6 +1254,7 @@ export class Muster {
         policy,
         driver,
         lifecycle,
+        title,
         deadline,
       });
       if ("outcome" in started) return started.outcome;
@@ -1232,6 +1278,7 @@ export class Muster {
         permissions,
         terminal,
         lifecycle,
+        title,
         startedAt,
         deadline,
       });
@@ -1418,6 +1465,50 @@ export class Muster {
     if (!result.ok)
       throw new Error(`${result.reason}: ${result.candidates.join(", ")}`);
     return peers[named.indexOf(result.peer)]!;
+  }
+  /**
+   * The title a ready session ends up showing. A caller's own title was set at
+   * launch and stays; otherwise the provisional one is replaced with the name
+   * `list` and `stop` accept, which only exists once the agent has registered.
+   * A retitle that fails does not fail the launch — the session is up — but the
+   * record then reports the provisional title, because that is what is shown.
+   */
+  private async nameTitle(
+    driver: TerminalHost | undefined,
+    hostRef: string,
+    explicit: string | undefined,
+    named: string,
+    provisional: string,
+  ): Promise<string | undefined> {
+    if (!driver?.setTitle) return undefined;
+    if (explicit !== undefined) return explicit;
+    const text = sanitiseTitle(named);
+    return driver.setTitle(hostRef, text).then(
+      () => text,
+      () => provisional,
+    );
+  }
+  /** Retitle a running tmux session from outside its agent. */
+  async title(id: string, raw: string, requester: RequesterId = LOCAL) {
+    const entry = await this.find(id);
+    assertMayAct(entry, requester);
+    const driver = this.drivers.find((d) => d.id === entry.host);
+    const refusal =
+      entry.kind !== "session"
+        ? "this is a task"
+        : entry.status !== "running"
+          ? `this session is ${entry.status}`
+          : !driver?.setTitle || !entry.hostRef || !entry.peer
+            ? `this session is hosted on ${entry.host ?? "no host"}`
+            : undefined;
+    if (refusal)
+      throw new Error(`title applies to a running tmux session; ${refusal}`);
+    const text = sanitiseTitle(raw);
+    await driver!.setTitle!(entry.hostRef!, text);
+    await this.registry.update(entry.launchId, {
+      peer: { ...entry.peer!, title: text },
+    });
+    return { id: entry.id, title: text };
   }
   async stop(id: string, requester: RequesterId = LOCAL) {
     const entry = await this.find(id);

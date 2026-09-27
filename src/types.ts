@@ -29,6 +29,8 @@ export type SessionPeer = LaunchPermissions &
      *  no limit applies — a host that does not outlive its parent has none. */
     idle_timeout?: number;
     ttl?: number;
+    /** The terminal title muster shows for this tmux session. */
+    title?: string;
     name: string;
     canonical_id: string;
     state: "idle" | "busy";

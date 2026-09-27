@@ -1,5 +1,5 @@
 /**
- * The `run`, `list`, `stop` and `output` tools exactly as the MCP server
+ * The `run`, `list`, `stop`, `output` and `title` tools exactly as the MCP server
  * advertises them.
  *
  * Extracted from `src/muster.ts` so it can be ASSERTED against `runSchema`
@@ -111,6 +111,11 @@ export const MCP_TOOLS = [
           description:
             "Stop this tmux session the given duration after launch regardless of activity, as 90s/30m/4h, or 'off'. Off by default.",
         },
+        title: {
+          type: "string",
+          description:
+            "Terminal title for this tmux session, shown by any terminal attached to it. Defaults to the session's name and runtime once it is reachable; the agent's own title is shown instead only with [session] title_from_agent. Control characters are stripped and it is capped at 100 characters. Refused for tasks and for pty or macos-terminal hosts.",
+        },
         identity: {
           type: "string",
           pattern: "^[a-zA-Z0-9_-]+$",
@@ -151,6 +156,20 @@ export const MCP_TOOLS = [
       type: "object",
       properties: { id: { type: "string", minLength: 1 } },
       required: ["id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "title",
+    description:
+      "Retitle a running tmux session by durable id or unambiguous peer name, from outside its agent.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", minLength: 1 },
+        title: { type: "string", minLength: 1 },
+      },
+      required: ["id", "title"],
       additionalProperties: false,
     },
   },

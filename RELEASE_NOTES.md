@@ -12,6 +12,22 @@ as patches, so do not read an old entry under the new rule.
 
 ## Unreleased
 
+**Muster titles the terminal of every tmux session it launches** (#48). The
+title is the session's name and runtime, `simple-cms-46 · claude`, which is the
+same handle `list` and `stop` accept. Before, the window showed whatever the
+agent last set. For Claude that was a status glyph and a topic, so nothing tied
+a window to its session. Before the session has a name, the title is the
+directory and runtime, never the prompt.
+
+- `muster run --title TEXT` (MCP `run`: `title`) names it yourself.
+- `muster title <id> TEXT` (MCP tool `title`) renames a running session from
+  outside its agent.
+- `[session] title_from_agent = true` shows the agent's own title instead.
+
+Titles are refused for tasks and for pty and macos-terminal sessions. Control
+characters are stripped, and titles are capped at 100 characters. Launch
+results and `list` report the title.
+
 **Session idle timeout now defaults to off instead of 30 minutes (#40).**
 Interactive sessions (such as those opened with `--open`) are intended for
 work that a person returns to over time. Stopping them after 30 minutes of
@@ -20,6 +36,8 @@ quiet kills a window someone is still using, which previously required passing
 stopped or exited. Pass `--idle-timeout DURATION` or configure
 `[session] idle_timeout` in `config.toml` to re-arm an inactivity limit.
 Tasks and PTY sessions are unchanged.
+Running sessions still count toward `max_concurrent`, so a session nobody stops
+now holds its slot until it is stopped.
 
 ## 1.1.1 — 2026-09-27
 

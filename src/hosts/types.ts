@@ -10,6 +10,11 @@ export type LaunchOptions = {
   cwd: string;
   env: Record<string, string>;
   label: string;
+  /**
+   * The terminal title, for a host that owns a window to put it on. `fromAgent`
+   * shows the agent's own title instead, keeping `text` for `setTitle`.
+   */
+  title?: { text: string; fromAgent: boolean };
   /** Optional absolute readiness deadline; hosts must bound launch work. */
   deadline?: number;
 };
@@ -32,6 +37,8 @@ export interface TerminalHost {
    * lifecycle management by not implementing it.
    */
   schedule?(seconds: number, argv: string[]): Promise<void>;
+  /** Retitle a live window. Optional: only a host that owns one can. */
+  setTitle?(hostRef: string, text: string): Promise<void>;
   /** The host's own addressing handle, for a command that must name it. */
   socketName?(): string;
   attachHint(hostRef: string): string | null;
