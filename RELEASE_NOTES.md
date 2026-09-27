@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.1.0 — 2026-09-27
 
 **`--level open` Claude launches can start unattended: `--options
 accept-bypass-warning` (#45).** In bypass permissions, Claude stops on a
