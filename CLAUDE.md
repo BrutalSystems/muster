@@ -1,18 +1,5 @@
 # Working in this repo
 
-## Vocabulary — these are instructions, not topics to discuss
-
-**"cut a release" / "cut"** means the whole release, through publication to npm.
-Not tagging and stopping to confirm. See below for what that involves here, and
-pick the bump yourself — this repo documents the answer.
-
-**"and update globally"** means: wait for the publish run to finish, then
-install the version just shipped so the `muster` on `PATH` is that version, on
-whichever machines run it. Verify with `muster --version` and report what it
-printed. Install only after the run completes — the registry lags a publish by
-a minute or two, and an install that races it silently fetches the previous
-version.
-
 ## The tag is what publishes
 
 `package.json` shows `version` and `postversion` scripts and nothing about
@@ -38,30 +25,18 @@ and commit subject. (Sibling repos without a `RELEASE_NOTES.md` use
 `--notes-from-tag`, where omitting `-m` leaves the release body empty. That
 failure mode does not exist here.)
 
-**Choosing the bump** — from [RELEASING.md](./RELEASING.md): while muster is
-`0.x`, the **minor is the breaking-change signal**. Bump minor only for an
-incompatible interface or permission-default change; use a patch for everything
-else, new features included. `muster --version`, `--plugin`/`--model` and npm
-plugin specifiers all shipped as patches. This convention is specific to this
-repo — the sibling repos version differently, so do not carry a rule in either
-direction.
+**Choosing the bump** is in [RELEASING.md](./RELEASING.md): from 1.0.0,
+ordinary semver, with a **minor** for a feature and a **patch** for a fix. The
+`0.x` rule, under which features shipped as patches, ended at 1.0.0. Do not
+read old releases into new ones, and do not carry a rule over from the sibling
+repos, which version differently.
 
 ## Installing it afterwards
 
-`postinstall` runs `scripts/prepare-pty.mjs`, which builds node-pty. npm skips
-install scripts by default, and the failure is silent: `muster --version`
-reports the new version while node-pty is unbuilt and the pty host cannot
-launch. Either allow the scripts once —
-
-```sh
-npm install -g --allow-scripts=@brutalsystems/muster,node-pty @brutalsystems/muster@<version>
-```
-
-— or set `npm config set allow-scripts=@brutalsystems/muster,node-pty
---location=user` on that machine so later installs keep working. Note that is
-user-level config shared by every project on the machine, and the key holds a
-single comma-separated value that `npm config set` replaces wholesale: read it
-before writing it.
+npm skips install scripts by default, and muster's `postinstall` builds
+node-pty. Skipping it fails silently: `muster --version` reports the new
+version while the pty host cannot launch. The README's quick start carries the
+install line that allows them; use that, not a bare `npm install -g`.
 
 ## The local gate
 

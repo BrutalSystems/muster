@@ -16,13 +16,11 @@ contents, build and test before publishing, and annotated version tags.
   files parse, both run, and the damage is a tarball that differs from the one
   CI verified. Only the runners are pinned; your own machine wants a current
   npm for the one-time `npm trust` step.
-- An independently installed Tin Can **0.6.4**, the verified contract baseline.
-  It is a test prerequisite, never a Muster dependency. (0.2.0 was the baseline
-  through 0.7.0's earlier release attempts; it and every version through 0.5.1
-  were withdrawn from the registry by Tin Can's maintainers, and 0.5.2 held the
-  baseline until 0.6.4 replaced it. Do not pin 0.6.3: its publish left the
-  server on the registry without the matching plugin. See
-  `CONTRACT_PROVENANCE.md` — the contract itself did not change.)
+- An independently installed Tin Can at the version the frozen fixture records
+  (`tincan_version` in `test/fixtures/canonical-id.json`), the verified contract
+  baseline. It is a test prerequisite, never a Muster dependency. Step 2 derives
+  the version from the fixture; see `CONTRACT_PROVENANCE.md` for how the
+  baseline has moved.
 
 ## Choosing the version
 
@@ -154,8 +152,8 @@ the specification for what has to pass first.
 **6. Verify the published artifact.**
 
 ```sh
-npm view @brutalsystems/muster@0.1.0 version dist.integrity
-npm pack @brutalsystems/muster@0.1.0 --pack-destination /path/to/release-staging
+npm view @brutalsystems/muster@<version> version dist.integrity
+npm pack @brutalsystems/muster@<version> --pack-destination /path/to/release-staging
 ```
 
 Inspect and smoke-test the registry tarball, then mark the release notes as
@@ -165,8 +163,10 @@ preparing this repository does not perform either.
 
 ## Installation authority
 
-**Installed deliberately, in the one session that should hold spawn authority —
-never at user scope.** Publication does not change this rule. Keep the README's
+This is about **registering Muster as an MCP server**, not installing the npm
+package (which the README installs globally). **The MCP server is registered
+deliberately, in the one session that should hold spawn authority — never at
+user scope** (see `docs/mcp.md`). Publication does not change this rule. Keep the README's
 session-scoped setup, Claude's operator-approved directory trust prerequisite,
 and the Tin Can/Muster authority boundary in the release notes. Do not copy
 Tin Can's global installation instructions into Muster.
