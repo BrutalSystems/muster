@@ -20,6 +20,11 @@ tools = ["peers", "send_peer", "message_log"]
 required = false
 ```
 
+`default_mcp` applies to **sessions only**. A `--kind task` launches with no
+MCP servers unless it names them with `--mcp`, because personal defaults don't
+carry into unattended one-shot runs. A task that should reach other agents
+needs `--mcp tincan` on the launch, whatever `default_mcp` says.
+
 Then any runtime can use it:
 
 ```sh
