@@ -75,6 +75,43 @@ OpenCode sessions otherwise use the same tmux/pty, viewer, list, stop, and human
 output behavior described above; OpenCode tasks use the same detached output
 and exit-status lifecycle as other tasks.
 
+## OpenCode on a local model
+
+A local OpenAI-compatible server can back an OpenCode launch: declare it under
+`[opencode.provider.<name>]` in `~/.muster/config.toml` and name the model with
+`--model <name>/<id>`.
+
+**Every model id needs its own entry**, not just the provider:
+
+```toml
+[opencode.provider.local.models."qwen2.5-14b"]
+name = "Qwen2.5 14B (local)"
+tool_call = true
+```
+
+A model the server offers but the config does not list fails at once with
+OpenCode's `Unexpected server error`, and nothing in that message points at the
+missing entry. Check the server is up first; muster does not probe it.
+
+**What an OpenCode launch reads by default.** `--pure` disables plugins only.
+OpenCode still loads the project's `AGENTS.md` (or its `CLAUDE.md` when there is
+no `AGENTS.md`), a global `~/.config/opencode/AGENTS.md` (or `~/.claude/CLAUDE.md`),
+and skills under `~/.claude/skills`. So a session can carry the launching user's
+personal instructions; see [#50](https://github.com/BrutalSystems/muster/issues/50).
+
+**Small models and tool use.** In testing with 3B to 30B local models, the
+failures were consistent: answering from nothing instead of reading the file
+the question named, looping on the same read, printing a tool call as text
+instead of making it, and reporting an exit code while hiding the error. What
+held up was a prompt naming the exact command or file, and a result checked
+outside the model: the task's exit code in `muster list` and the actual tool
+output in `muster output`, not the model's closing sentence.
+
+**Watching a session on a particular screen.** `--open` puts the window wherever
+the terminal application chooses. To control placement, launch without `--open`
+and attach from a terminal you have positioned yourself, using the returned
+`attach_hint`.
+
 ## Where a launch may run
 
 By default any directory the account can read is a legal target, which is the
