@@ -6,14 +6,13 @@ Hosts, terminals, repeated requests, and what happens when an outcome is not kno
 
 ## Session lifetime
 
-A tmux session is stopped after 30 minutes with no pane activity. Set
-`--idle-timeout 2h` to lengthen it, `--idle-timeout off` to disable it for one
-launch, or `[session] idle_timeout` in `config.toml` to change the default for
-every launch. `--ttl` adds a hard ceiling regardless of activity, for a session
-that looks busy only because something is looping inside it. A session with a
-client attached is never stopped. The limit applies to tmux sessions only: pty
-and macos-terminal sessions die with the process that launched them, and a task
-ends when its prompt does.
+A tmux session has no idle timeout by default. Set `--idle-timeout 30m` or
+`--idle-timeout 2h` to arm an inactivity limit, or `[session] idle_timeout` in
+`config.toml` to set a default for every launch. `--ttl` adds a hard ceiling
+regardless of activity, for a session that looks busy only because something is
+looping inside it. A session with a client attached is never stopped. The limit
+applies to tmux sessions only: pty and macos-terminal sessions die with the
+process that launched them, and a task ends when its prompt does.
 
 ## Terminal titles
 
@@ -238,12 +237,12 @@ computed before validation would disagree with itself.
 
 What a repeat returns depends on what the first attempt did:
 
-| First attempt                     | A repeat gets                              |
-| --------------------------------- | ------------------------------------------ |
-| Reachable session or running task | That session or task, unchanged            |
-| Still launching                   | Refused — ask for its status instead       |
-| Failed, exited or stopped         | Refused, naming the recorded outcome       |
-| Outcome unknown                   | Refused, and told to inspect first          |
+| First attempt                     | A repeat gets                        |
+| --------------------------------- | ------------------------------------ |
+| Reachable session or running task | That session or task, unchanged      |
+| Still launching                   | Refused — ask for its status instead |
+| Failed, exited or stopped         | Refused, naming the recorded outcome |
+| Outcome unknown                   | Refused, and told to inspect first   |
 
 A repeat never consumes launch capacity, including when the concurrency cap is
 full of the very launch being asked about. Omitting the key leaves behaviour

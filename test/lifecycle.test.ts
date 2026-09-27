@@ -10,9 +10,9 @@ const empty = configSchema.parse({});
 const req = (over: Record<string, unknown>) =>
   runSchema.parse({ runtime: "claude", prompt: "ping", ...over });
 
-test("a session with nothing named gets the 30 minute default", () => {
+test("a session with nothing named gets no idle timeout", () => {
   expect(resolveLifecycle(req({}), empty, true)).toEqual({
-    idleTimeout: 1800,
+    idleTimeout: null,
     ttl: null,
   });
 });
@@ -24,7 +24,7 @@ test("a flag beats config", () => {
   ).toBe(600);
 });
 
-test("config beats the built-in default", () => {
+test("config arms an idle timeout when flag is absent", () => {
   const config = configSchema.parse({ session: { idle_timeout: "45m" } });
   expect(resolveLifecycle(req({}), config, true).idleTimeout).toBe(2700);
 });
@@ -37,7 +37,7 @@ test("off on the flag escapes a configured default", () => {
   ).toBeNull();
 });
 
-test("off in config disables the built-in default", () => {
+test("off in config leaves idle timeout disabled", () => {
   const config = configSchema.parse({ session: { idle_timeout: "off" } });
   expect(resolveLifecycle(req({}), config, true).idleTimeout).toBeNull();
 });

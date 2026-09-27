@@ -28,6 +28,17 @@ Titles are refused for tasks and for pty and macos-terminal sessions. Control
 characters are stripped, and titles are capped at 100 characters. Launch
 results and `list` report the title.
 
+**Session idle timeout now defaults to off instead of 30 minutes (#40).**
+Interactive sessions (such as those opened with `--open`) are intended for
+work that a person returns to over time. Stopping them after 30 minutes of
+quiet kills a window someone is still using, which previously required passing
+`--idle-timeout off` on every launch. Sessions now persist until explicitly
+stopped or exited. Pass `--idle-timeout DURATION` or configure
+`[session] idle_timeout` in `config.toml` to re-arm an inactivity limit.
+Tasks and PTY sessions are unchanged.
+Running sessions still count toward `max_concurrent`, so a session nobody stops
+now holds its slot until it is stopped.
+
 ## 1.1.1 — 2026-09-27
 
 **OpenCode now works in `--cwd`, not the directory muster was run from.** The
