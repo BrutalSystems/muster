@@ -200,3 +200,22 @@ test("the human view says whether a model was pinned or came from config", () =>
   });
   expect(defaulted).toContain("Model: local/qwen (configured default)");
 });
+
+test("a session's title is shown when it has one", () => {
+  expect(
+    formatHuman({
+      kind: "session",
+      runtime: "claude-code",
+      state: "idle",
+      session_id: "s1",
+      cwd: "/w",
+      title: "reviewer",
+    }),
+  ).toContain("Title:");
+});
+
+test("a retitle reads as one line naming the run and its new title", () => {
+  expect(formatHuman({ id: "s1", title: "now deploying" })).toBe(
+    "Titled s1: now deploying.\n",
+  );
+});

@@ -15,6 +15,33 @@ client attached is never stopped. The limit applies to tmux sessions only: pty
 and macos-terminal sessions die with the process that launched them, and a task
 ends when its prompt does.
 
+## Terminal titles
+
+A tmux session's terminal title is the name `list` and `stop` accept, followed by
+the runtime (`simple-cms-46 · claude`), so a window opened with `--open` or
+attached by hand says which session it is. Until the agent is reachable and has
+a name, the title is the directory and runtime. It is never the prompt.
+
+```sh
+muster run claude --title "reviewer" --prompt "Review this project" --open
+muster title simple-cms-46 "reviewing #48"   # retitle a running session
+```
+
+`--title` (MCP `run`: `title`) sets it at launch. `muster title <id> TEXT` (MCP
+`title`) changes it while the session runs, without involving the agent.
+Control characters are stripped, since the title reaches the terminal inside an
+escape sequence, and it is capped at 100 characters. Both are refused for tasks,
+pty and macos-terminal sessions, and sessions that have ended.
+
+Muster's title holds even though agents set their own: Claude Code retitles
+itself with a status glyph and its current topic. To show the agent's title
+instead, set this in `config.toml`:
+
+```toml
+[session]
+title_from_agent = true
+```
+
 ## Opening a terminal
 
 Add `--open` to display the launched session in a new Terminal.app window on macOS:

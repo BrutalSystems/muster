@@ -126,7 +126,14 @@ test("MCP uses the same tools, no stdout diagnostics, and closing stops owned pt
       "output",
       "run",
       "stop",
+      "title",
     ]);
+    // Same refusal the CLI gives, as a tool error rather than a crash.
+    const untitled = await client.callTool({
+      name: "title",
+      arguments: { id: "no-such-run", title: "x" },
+    });
+    expect(untitled.isError).toBe(true);
     expect(
       tools.tools.find((t) => t.name === "run")?.inputSchema.properties
         ?.terminal,

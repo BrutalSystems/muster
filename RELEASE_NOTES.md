@@ -10,6 +10,24 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**Muster titles the terminal of every tmux session it launches** (#48). The
+title is the session's name and runtime, `simple-cms-46 · claude`, which is the
+same handle `list` and `stop` accept. Before, the window showed whatever the
+agent last set. For Claude that was a status glyph and a topic, so nothing tied
+a window to its session. Before the session has a name, the title is the
+directory and runtime, never the prompt.
+
+- `muster run --title TEXT` (MCP `run`: `title`) names it yourself.
+- `muster title <id> TEXT` (MCP tool `title`) renames a running session from
+  outside its agent.
+- `[session] title_from_agent = true` shows the agent's own title instead.
+
+Titles are refused for tasks and for pty and macos-terminal sessions. Control
+characters are stripped, and titles are capped at 100 characters. Launch
+results and `list` report the title.
+
 ## 1.1.1 — 2026-09-27
 
 **OpenCode now works in `--cwd`, not the directory muster was run from.** The

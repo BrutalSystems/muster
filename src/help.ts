@@ -100,6 +100,10 @@ export const COMMANDS: Command[] = [
         "stop a tmux session this long after launch, whatever its state",
       ],
       [
+        "--title TEXT",
+        "the terminal title of a tmux session; defaults to its name and runtime",
+      ],
+      [
         "--request-key KEY",
         "name the request; sending it again returns the same launch",
       ],
@@ -142,6 +146,16 @@ export const COMMANDS: Command[] = [
     options: [],
     notes: ["Prints raw text; --format does not apply."],
     examples: ["muster output 6fae755b-8f5d-4425-8ed7-69e84bfac8c5"],
+  },
+  {
+    name: "title",
+    summary: "retitle a running tmux session",
+    synopsis: "muster title <id> TEXT [--format json|human]",
+    options: [["--format FORMAT", "json (default) or human"]],
+    notes: [
+      "Sets the title any attached terminal shows, without involving the agent. Refused for tasks, pty sessions and ended sessions.",
+    ],
+    examples: ["muster title simple-cms-46 'reviewing #48'"],
   },
   {
     name: "identities",
