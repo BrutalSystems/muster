@@ -10,6 +10,17 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**Session idle timeout now defaults to off instead of 30 minutes (#40).**
+Interactive sessions (such as those opened with `--open`) are intended for
+work that a person returns to over time. Stopping them after 30 minutes of
+quiet kills a window someone is still using, which previously required passing
+`--idle-timeout off` on every launch. Sessions now persist until explicitly
+stopped or exited. Pass `--idle-timeout DURATION` or configure
+`[session] idle_timeout` in `config.toml` to re-arm an inactivity limit.
+Tasks and PTY sessions are unchanged.
+
 ## 1.1.1 — 2026-09-27
 
 **OpenCode now works in `--cwd`, not the directory muster was run from.** The

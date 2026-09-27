@@ -93,7 +93,7 @@ export const COMMANDS: Command[] = [
       ],
       [
         "--idle-timeout DURATION",
-        "stop a tmux session after this much inactivity; 30m by default, off to disable",
+        "stop a tmux session after this much inactivity (off by default)",
       ],
       [
         "--ttl DURATION",

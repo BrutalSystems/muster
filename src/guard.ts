@@ -312,12 +312,8 @@ export type SessionLifecycle = {
   ttl: number | null;
 };
 
-/** 30 minutes. Long enough that a trust prompt or a coffee does not cost a
- *  session; short enough that an orphan dies within the hour. */
-export const DEFAULT_IDLE_TIMEOUT = 1800;
-
 /**
- * Flag, then config, then the built-in default; `off` disables at any level.
+ * Flag, then config; `off` disables at any level. Defaults to off.
  *
  * Only a tmux session can honour a lifecycle: pty and macos-terminal die with
  * their parent and a task is not a session at all. An explicit request there is
@@ -368,7 +364,7 @@ export function resolveLifecycle(
       config.session.idle_timeout,
       "--idle-timeout",
       "[session] idle_timeout",
-      DEFAULT_IDLE_TIMEOUT,
+      null,
     ),
     ttl: one(req.ttl, config.session.ttl, "--ttl", "[session] ttl", null),
   };

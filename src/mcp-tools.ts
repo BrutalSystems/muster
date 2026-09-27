@@ -104,7 +104,7 @@ export const MCP_TOOLS = [
         idleTimeout: {
           type: "string",
           description:
-            "Stop this tmux session after the given inactivity, as 90s/30m/4h, or 'off'. Defaults to 30m. Refused for tasks and for pty or macos-terminal hosts, which do not outlive their parent.",
+            "Stop this tmux session after the given inactivity, as 90s/30m/4h, or 'off'. Off by default. Refused for tasks and for pty or macos-terminal hosts, which do not outlive their parent.",
         },
         ttl: {
           type: "string",
