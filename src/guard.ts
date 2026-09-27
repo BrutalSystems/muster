@@ -36,6 +36,8 @@ export const runSchema = z
     model: z.string().min(1).optional(),
     idleTimeout: z.string().min(1).optional(),
     ttl: z.string().min(1).optional(),
+    /** The terminal title of a tmux session. See `resolveTitle`. */
+    title: z.string().optional(),
     project: z
       .string()
       .regex(/^[a-zA-Z0-9_-]+$/)
@@ -372,6 +374,40 @@ export function resolveLifecycle(
     ),
     ttl: one(req.ttl, config.session.ttl, "--ttl", "[session] ttl", null),
   };
+}
+/** Longer than any tab shows, short enough that a pasted prompt is not a title. */
+const TITLE_MAX = 100;
+/**
+ * A title reaches the outer terminal inside an OSC escape that tmux writes, so a
+ * control character in it is not cosmetic: ESC or BEL ends that sequence and
+ * whatever follows is read by the terminal as a command of its own. C0, DEL and
+ * C1 all go, and what is left must still say something.
+ */
+export function sanitiseTitle(raw: string): string {
+  const text = raw
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, "")
+    .trim()
+    .slice(0, TITLE_MAX)
+    .trim();
+  if (!text) throw new Error("--title must contain printable text");
+  return text;
+}
+/**
+ * The launch's explicit title, or undefined when the launch should be titled by
+ * default once its name is known. Refused where nothing will carry it, on the
+ * same terms as `resolveLifecycle`: only a tmux session has a window muster
+ * owns, and `titleable` comes from the selected driver, not from `req.host`.
+ */
+export function resolveTitle(
+  req: RunRequest,
+  titleable: boolean,
+): string | undefined {
+  if (req.title === undefined) return undefined;
+  if (!titleable)
+    throw new Error(
+      `--title applies to tmux sessions; this launch is ${req.kind === "task" ? "a task" : `hosted on ${req.host ?? "the configured host"}`}`,
+    );
+  return sanitiseTitle(req.title);
 }
 export function runtimeArgs(req: RunRequest): string[] {
   const result: string[] = [];

@@ -76,6 +76,34 @@ export function parseWindowList(output: string) {
     }));
 }
 /**
+ * Where muster keeps a session's title. A user option, not the pane title
+ * (`#T`): an agent's OSC 0/2 rewrites `#T` whatever `allow-rename` says — that
+ * option governs only the window name — so a title muster set there would last
+ * until Claude Code's first status update. The pane title is left to the agent,
+ * which is what `fromAgent` shows instead.
+ */
+export const TITLE_OPTION = "@muster_title";
+/** `;`-joined `set-option` commands for `new-session`'s command list, so the
+ *  title is in place before any client can attach and see a blank one. */
+export function titleOptions(
+  session: string,
+  title: { text: string; fromAgent: boolean },
+): string[] {
+  const set = (name: string, value: string) => [
+    ";",
+    "set-option",
+    "-t",
+    session,
+    name,
+    value,
+  ];
+  return [
+    ...set(TITLE_OPTION, title.text),
+    ...set("set-titles-string", title.fromAgent ? "#T" : `#{${TITLE_OPTION}}`),
+    ...set("set-titles", "on"),
+  ];
+}
+/**
  * One shell command line for `run-shell`.
  *
  * Two escapes, not one. POSIX single-quoting keeps the shell from splitting an
@@ -213,6 +241,7 @@ export class TmuxHost implements TerminalHost {
           session,
           "status",
           this.status,
+          ...(opts.title ? titleOptions(session, opts.title) : []),
         ],
         opts.deadline,
       );
@@ -232,6 +261,12 @@ export class TmuxHost implements TerminalHost {
       await rm(dir, { recursive: true, force: true });
       throw e;
     }
+  }
+  /** Session options accept a window id as their target, so the hostRef the
+   *  registry already holds is enough. The value is passed as one argv element
+   *  and tmux stores it verbatim: a leading `-` or a `#{...}` stays text. */
+  async setTitle(hostRef: string, text: string) {
+    await this.call(["set-option", "-t", hostRef, TITLE_OPTION, text]);
   }
   async list() {
     try {

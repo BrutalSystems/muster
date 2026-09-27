@@ -60,6 +60,12 @@ const sessionSectionSchema = z
   .object({
     idle_timeout: z.string().min(1).optional(),
     ttl: z.string().min(1).optional(),
+    /**
+     * Show the agent's own terminal title instead of muster's. Off by default:
+     * Claude Code retitles constantly with a status glyph and topic, which
+     * replaces the name `list` and `stop` accept.
+     */
+    title_from_agent: z.boolean().default(false),
   })
   .strict()
   .default({});

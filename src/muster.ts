@@ -27,6 +27,9 @@ const listSchema = z
   .object({ kind: z.enum(["session", "task"]).optional() })
   .strict();
 const idSchema = z.object({ id: z.string().min(1) }).strict();
+const titleSchema = z
+  .object({ id: z.string().min(1), title: z.string().min(1) })
+  .strict();
 const { version } = createRequire(import.meta.url)("../package.json") as {
   version: string;
 };
@@ -163,6 +166,10 @@ async function main() {
             return text(await muster.stop(idSchema.parse(args).id));
           case "output":
             return text(await muster.output(idSchema.parse(args).id));
+          case "title": {
+            const { id, title } = titleSchema.parse(args);
+            return text(await muster.title(id, title));
+          }
           default:
             throw new Error(`Unknown tool ${params.name}`);
         }
@@ -212,6 +219,7 @@ async function main() {
         model: { type: "string" },
         "idle-timeout": { type: "string" },
         ttl: { type: "string" },
+        title: { type: "string" },
         socket: { type: "string" },
         home: { type: "string" },
         "stop-now": { type: "boolean" },
@@ -241,6 +249,7 @@ async function main() {
     for (const [name, value] of [
       ["--idle-timeout", idleTimeout],
       ["--ttl", values.ttl],
+      ["--title", values.title],
     ] as const)
       if (value !== undefined && command !== "run")
         throw new Error(`${name} applies only to run`);
@@ -411,6 +420,13 @@ async function main() {
       const { id } = idSchema.parse({ id: positionals[0] });
       if (command === "stop") print(await muster.stop(id));
       else process.stdout.write(await muster.output(id));
+    } else if (command === "title") {
+      // Positional rather than --title: the flag names a launch's title, and
+      // reusing it here would make `muster title --title x <id>` a spelling.
+      if (positionals.length !== 2 || Object.keys(values).length)
+        throw new Error("title requires an id and the title text");
+      const { id } = idSchema.parse({ id: positionals[0] });
+      print(await muster.title(id, positionals[1]!));
     } else if (command === "reap-check") {
       // Hidden: armed by muster itself as a tmux job, never typed by a person.
       // NOTE: `Muster.create()` above already ran against the REAL home before

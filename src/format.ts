@@ -26,6 +26,7 @@ type RecordView = {
   signal?: string | null;
   error?: string;
   stopped?: boolean;
+  title?: string;
 };
 function clean(value: unknown): string {
   return String(value ?? "-").replace(
@@ -77,6 +78,9 @@ function recordHuman(record: RecordView, color: boolean): string {
           : 90;
   const id = record.id ?? record.thread_id ?? record.session_id;
   if (record.stopped === true) return `${paint("Stopped", 90)} ${clean(id)}.`;
+  // `muster title` answers with the id and the title alone, no kind.
+  if (record.kind === undefined && record.title !== undefined)
+    return `Titled ${clean(id)}: ${clean(record.title)}.`;
   const lines = [
     `${clean(record.runtime)} · ${clean(record.kind)} · ${paint(clean(record.state), stateColor)}`,
     field("ID", clean(id)),
@@ -85,6 +89,7 @@ function recordHuman(record: RecordView, color: boolean): string {
     lines.push(field("Address", clean(record.canonical_id)));
   if (record.runtime === "opencode" && record.server_url)
     lines.push(field("Control URL", clean(record.server_url)));
+  if (record.title) lines.push(field("Title", clean(record.title)));
   lines.push(field("Directory", clean(record.cwd)));
   if (record.identity) lines.push(field("Identity", clean(record.identity)));
   if (record.permissions)
