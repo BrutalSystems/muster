@@ -15,6 +15,7 @@ coverage/
 .muster/
 
 # Private implementation history and live-probe records stay local
+CLAUDE.local.md
 EXECUTION_NOTES.md
 IMPLEMENTATION_HANDOFF_AMENDMENT.md
 IMPLEMENTATION_PLAN.md

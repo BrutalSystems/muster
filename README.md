@@ -59,7 +59,9 @@ models; behaviour against real ones is verified by hand and recorded in
 ## Quick start
 
 ```sh
-npm install -g @brutalsystems/muster
+# Allow the install scripts: muster's postinstall builds node-pty, and npm
+# skips install scripts by default — silently, so the pty host fails later.
+npm install -g --allow-scripts=@brutalsystems/muster,node-pty @brutalsystems/muster
 
 # A session: an agent you can reach, addressed once it is genuinely alive.
 muster run claude --prompt 'Review this project' --cwd . --level work
