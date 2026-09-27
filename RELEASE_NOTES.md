@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.1.1 — 2026-09-27
 
 **OpenCode now works in `--cwd`, not the directory muster was run from.** The
 agent was started in `--cwd`, but it inherited the caller's `PWD`, and
