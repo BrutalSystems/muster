@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENTS } from "./agents.js";
+import type { LaunchPermissions } from "./guard.js";
 import type { Runtime } from "./types.js";
 
 /**
@@ -12,7 +13,10 @@ import type { Runtime } from "./types.js";
  * in its own way, or cannot express at all — so the set is closed, and naming
  * one an agent has no answer for is an error rather than a silent no-op.
  */
-export const LAUNCH_OPTIONS = ["auto-approve-path"] as const;
+export const LAUNCH_OPTIONS = [
+  "auto-approve-path",
+  "accept-bypass-warning",
+] as const;
 export type LaunchOption = (typeof LAUNCH_OPTIONS)[number];
 
 /**
@@ -20,16 +24,34 @@ export type LaunchOption = (typeof LAUNCH_OPTIONS)[number];
  * spawned. `auto-approve-path` records that the launch directory is trusted, so
  * it needs an agent with a trust gate to record it in; OpenCode has none, and
  * accepting the flag there would promise something muster cannot deliver.
+ *
+ * `accept-bypass-warning` answers Claude's one-time "Bypass Permissions mode"
+ * warning, which only Claude shows and only in bypass. Anywhere else there is
+ * no warning to accept, so it is refused rather than carried as a no-op that
+ * reads like consent to something.
  */
 export function assertOptionsSupported(
   runtime: Runtime,
   options: readonly LaunchOption[],
+  permissions: LaunchPermissions,
 ): void {
-  for (const option of options)
+  for (const option of options) {
     if (option === "auto-approve-path" && !AGENTS[runtime].trustWorkspace)
       throw new Error(
         `--options auto-approve-path is not supported for ${runtime}: it has no workspace-trust gate`,
       );
+    if (option === "accept-bypass-warning" && runtime !== "claude")
+      throw new Error(
+        `--options accept-bypass-warning is not supported for ${runtime}: only Claude shows a bypass-permissions warning`,
+      );
+    if (
+      option === "accept-bypass-warning" &&
+      permissions.permissions !== "bypass"
+    )
+      throw new Error(
+        `--options accept-bypass-warning requires bypass permissions (--level open or --permissions bypass); this launch resolves to ${permissions.permissions}`,
+      );
+  }
 }
 
 /**

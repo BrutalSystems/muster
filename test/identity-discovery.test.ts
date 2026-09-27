@@ -148,3 +148,23 @@ test("a trusted directory points at the terminal without naming a screen nobody 
   // that may not exist is the same cost as the vague message, paid twice.
   expect(msg).not.toMatch(/bypass/i);
 });
+
+test("a bypass launch that never registered names the bypass warning and the option", () => {
+  // Demonstrated on 2026-09-27 (#45): `--level open` stops on Claude's
+  // "Bypass Permissions mode" warning, with the directory already trusted.
+  // Named only when the launch actually ran in bypass without accepting it.
+  const msg = claudeRegistryDiagnostic(true, "/Source/arm", "/cfg", {
+    bypassWarningPending: true,
+  });
+  expect(msg).toMatch(/Bypass Permissions/);
+  expect(msg).toMatch("--options accept-bypass-warning");
+  expect(msg).not.toMatch(/workspace trust has not been accepted/);
+});
+
+test("an untrusted directory is still named first on a bypass launch", () => {
+  // Trust is checked and the bypass warning is only inferred, so trust wins.
+  const msg = claudeRegistryDiagnostic(false, "/Source/arm", "/cfg", {
+    bypassWarningPending: true,
+  });
+  expect(msg).toMatch(/workspace trust has not been accepted/);
+});

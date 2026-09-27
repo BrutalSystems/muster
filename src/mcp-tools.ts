@@ -69,9 +69,12 @@ export const MCP_TOOLS = [
         },
         options: {
           type: "array",
-          items: { type: "string", enum: ["auto-approve-path"] },
+          items: {
+            type: "string",
+            enum: ["auto-approve-path", "accept-bypass-warning"],
+          },
           description:
-            "Muster-side launch options. auto-approve-path records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch; refused for a runtime with no trust gate, and refused if the directory ships hooks or MCP servers. Not expressible remotely.",
+            "Muster-side launch options. auto-approve-path records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch; refused for a runtime with no trust gate, and refused if the directory ships hooks or MCP servers. accept-bypass-warning accepts Claude's one-time Bypass Permissions warning for a bypass launch (level open); refused for other runtimes and without bypass permissions. Not expressible remotely.",
         },
         project: {
           type: "string",

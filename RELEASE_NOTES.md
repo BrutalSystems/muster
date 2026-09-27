@@ -12,6 +12,17 @@ as patches, so do not read an old entry under the new rule.
 
 ## Unreleased
 
+**`--level open` Claude launches can start unattended: `--options
+accept-bypass-warning` (#45).** In bypass permissions, Claude stops on a
+one-time "Bypass Permissions mode" warning before it registers. Muster launches
+with `--setting-sources ""`, so an acceptance recorded in the profile's
+`settings.json` is never read, and every `--level open` launch timed out on it
+with `--options auto-approve-path` or without. The new option sets
+`skipDangerousModePermissionPrompt` for that launch. It is refused for Codex and
+OpenCode and without bypass permissions, and `--level open` alone does not imply
+it. A bypass session that times out without it now names the warning and the
+option, instead of "check the terminal".
+
 **Recorded what the vendored Tin Can contract covers, and what it does not.**
 The copies pin the address format Muster generates and the refusals resolution
 can produce; they do not cover Tin Can's send-path vocabulary, because Muster

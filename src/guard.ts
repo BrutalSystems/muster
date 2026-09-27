@@ -538,6 +538,14 @@ export function launchArgs(
   const settings = {
     ...profilePluginSettings(configDir),
     disableAllHooks: true,
+    // `--setting-sources ""` means an acceptance recorded in the profile's
+    // settings.json is never read, so without this the bypass warning stops
+    // every bypass launch before it registers (#45). Only on request, and
+    // `assertOptionsSupported` has already refused it outside bypass.
+    ...(req.options.includes("accept-bypass-warning") &&
+    policy.permissions === "bypass"
+      ? { skipDangerousModePermissionPrompt: true }
+      : {}),
     permissions: {
       defaultMode: mode,
       allow: mcp.flatMap((s) =>
