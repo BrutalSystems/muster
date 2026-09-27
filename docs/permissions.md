@@ -157,9 +157,10 @@ verbatim and is refused unless that runtime's row allow-lists it. The set is
 closed, and naming an option a runtime cannot express is an error rather than a
 silent no-op.
 
-| Option              | What it does                                                                                                                 |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `auto-approve-path` | Records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch. |
+| Option                  | What it does                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `auto-approve-path`     | Records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch. |
+| `accept-bypass-warning` | Accepts Claude's one-time "Bypass Permissions mode" warning for this launch, so a `--level open` session can start.         |
 
 `auto-approve-path` needs a runtime with a workspace-trust gate: Claude and
 Codex have one, OpenCode does not and the option is refused for it. The record
@@ -183,6 +184,28 @@ Trust it yourself once, or launch without the option.
 Not expressible remotely, for the same reason `--mcp` is not: it would have this
 machine trust a directory a remote caller named, and trust is what lets that
 directory configure the session.
+
+**`accept-bypass-warning`** exists because Claude, launched in bypass
+permissions, stops on a warning before it does anything:
+
+```
+WARNING: Claude Code running in Bypass Permissions mode
+❯ No, exit
+  Yes, I accept
+```
+
+A person at the terminal can answer it once and Claude remembers, in the
+profile's `settings.json`. A Muster launch never reads that file
+(`--setting-sources ""`), so every unattended `--level open` launch stops there
+and times out. The option sets `skipDangerousModePermissionPrompt` in the
+settings Muster passes for that launch only.
+
+It is refused anywhere the warning cannot appear: for Codex and OpenCode, and
+for any launch whose permissions are not `bypass`. `--level open` alone does
+not imply it. Accepting the warning stays visible in the command that did it,
+and `bypass` still needs `allow_dangerous_flags = true`. A bypass session that
+times out without the option says so, rather than the generic "check the
+terminal". Not expressible remotely, like every option.
 
 ### Containment levels
 

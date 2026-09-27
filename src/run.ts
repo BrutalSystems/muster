@@ -382,10 +382,10 @@ export class Muster {
       (req.kind !== "session" || !["auto", "tmux"].includes(requestedHost))
     )
       throw new Error("--open requires a tmux session on macOS");
+    const permissions = resolvePermissions(effective, this.config);
     // Refused here, with the other checks that cost nothing to fail: an option
     // the runtime cannot honour must not leave a registry entry behind.
-    assertOptionsSupported(req.runtime, req.options);
-    const permissions = resolvePermissions(effective, this.config);
+    assertOptionsSupported(req.runtime, req.options, permissions);
     const enforcement = enforcementGrade(req.runtime, permissions);
     assertEnforcementMeetsMinimum(req.runtime, enforcement, policy);
     // Composed here, before any process of any kind is started — the version
@@ -1092,6 +1092,12 @@ export class Muster {
         await claudeWorkspaceTrusted(resolveEnv, req.cwd),
         req.cwd,
         claudeConfigDir(resolveEnv),
+        {
+          bypassWarningPending:
+            req.kind === "session" &&
+            permissions.permissions === "bypass" &&
+            !req.options.includes("accept-bypass-warning"),
+        },
       );
     throw new Error(`${diagnostic} after ${this.config.launch_timeout_sec}s`);
   }

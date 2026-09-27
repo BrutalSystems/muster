@@ -82,7 +82,7 @@ export const COMMANDS: Command[] = [
       ["--mcp NAME", "repeatable; replaces configured defaults"],
       [
         "--options NAME",
-        "repeatable; muster-side launch options — auto-approve-path records the launch directory as trusted so its one-time dialog does not block the launch (claude and codex only, and refused if the directory ships hooks or MCP servers)",
+        "repeatable; muster-side launch options — auto-approve-path records the launch directory as trusted so its one-time dialog does not block the launch (claude and codex only, and refused if the directory ships hooks or MCP servers); accept-bypass-warning accepts Claude's one-time Bypass Permissions warning so a --level open launch can start (claude with bypass permissions only)",
       ],
       ["--no-mcp", "launch with no MCP servers"],
       ["--plugin NAME", "repeatable; replaces configured defaults (OpenCode)"],

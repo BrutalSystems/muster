@@ -74,11 +74,11 @@ export async function claudeWorkspaceTrusted(
  * timeout looks identical to a hung or crashed launch. Several unrelated
  * screens can produce it, and the old message guessed at two of them together.
  * Trust is the one Muster can actually check, so it is either named or ruled
- * out. Nothing else is named: a first-use bypass-permissions confirmation was
- * a plausible account of one report, but no profile on this machine carries a
- * key for it the way they carry `hasSeenAutoModeEntryWarning` and its
- * siblings, so this says "another one-time confirmation" rather than sending
- * the reader after a screen nobody has demonstrated.
+ * out. The bypass-permissions warning is named only for a launch that ran in
+ * bypass without `accept-bypass-warning`: demonstrated in #45, and that launch
+ * is the only one it can stop. Anything else says "another one-time
+ * confirmation" rather than sending the reader after a screen nobody has
+ * demonstrated.
  *
  * A `--kind task` launch into the same directory is the cheap discriminator:
  * it runs headless and never sees the dialog, so it succeeds where a session
@@ -88,6 +88,7 @@ export function claudeRegistryDiagnostic(
   trusted: boolean,
   cwd: string,
   configDir: string,
+  opts: { bypassWarningPending?: boolean } = {},
 ): string {
   if (!trusted)
     return (
@@ -95,6 +96,13 @@ export function claudeRegistryDiagnostic(
       `accepted for ${cwd} in ${configDir} — accept it once with ` +
       `\`cd ${cwd} && claude\`, then retry (trust is per-directory and is ` +
       `not inherited from a parent directory)`
+    );
+  if (opts.bypassWarningPending)
+    return (
+      `no Claude session registry found (${cwd} is trusted for this profile): ` +
+      `this launch runs in bypass permissions, and Claude stops on its ` +
+      `one-time "Bypass Permissions mode" warning until someone answers it — ` +
+      `relaunch with --options accept-bypass-warning to accept it for the launch`
     );
   return (
     `no Claude session registry found (${cwd} is trusted for this profile, ` +
