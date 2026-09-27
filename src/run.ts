@@ -565,11 +565,14 @@ export class Muster {
       req.cwd,
       deadline,
     );
-    let runtimeEnv = mcpEnvironment(
-      prepared.servers,
-      agentBase,
-      this.sourceEnv,
-    );
+    // PWD names the launch directory, not the caller's. The child is spawned
+    // in req.cwd, but an inherited PWD still names wherever muster was run
+    // from, and `opencode run` prefers PWD over its real cwd: its model's
+    // shell then ran in the caller's directory instead of --cwd.
+    let runtimeEnv: Record<string, string> = {
+      ...mcpEnvironment(prepared.servers, agentBase, this.sourceEnv),
+      PWD: req.cwd,
+    };
     entry = await this.registry.update(entry.launchId, prepared.summary);
     if (identityName && identityMeta) {
       // The launch id exists now, so the copy can be made and named after it.

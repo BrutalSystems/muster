@@ -10,6 +10,17 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**OpenCode now works in `--cwd`, not the directory muster was run from.** The
+agent was started in `--cwd`, but it inherited the caller's `PWD`, and
+`opencode run` takes its working directory from `PWD` ahead of the directory it
+was started in. A task launched with `--cwd <repo>` from another directory told
+the model it was in the caller's directory, and its shell commands ran there.
+Muster now sets `PWD` to the launch directory for every launched agent.
+Reproduced with `opencode run` 1.18.32; Claude was unaffected, because it uses
+its real working directory.
+
 ## 1.1.0 — 2026-09-27
 
 **`--level open` Claude launches can start unattended: `--options

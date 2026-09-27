@@ -87,6 +87,7 @@ if (argv[0] === "run") {
       prompt,
       argv,
       cwd: fs.realpathSync(process.cwd()),
+      pwd: process.env.PWD,
       ...configSummary(),
       intentPresent: fs.existsSync(
         path.join(process.env.MUSTER_TEST_HOME || root, "launches.jsonl"),
