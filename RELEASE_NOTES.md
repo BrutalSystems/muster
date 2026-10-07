@@ -65,6 +65,15 @@ launch now sets `mouse on`, `history-limit 50000` and extended keys on the
 earlier muster picks them up at the next launch; its existing windows keep
 their old history limit. A tmux too old for an option launches without it.
 
+**An OpenCode session whose first turn finishes quickly now launches** (#2).
+OpenCode drops a session from its status endpoint the moment it goes idle, and
+Muster used presence there to tell its own session from others in the same
+project. A short first turn could finish before Muster looked, and the launch
+then failed after its full timeout with "no OpenCode session matched the launch
+endpoint, cwd, and creation window". A session absent from the status endpoint
+is now accepted when its first message is the prompt Muster submitted. Two
+sessions that both qualify still fail the launch as ambiguous.
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The

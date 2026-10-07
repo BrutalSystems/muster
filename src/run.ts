@@ -1048,6 +1048,7 @@ export class Muster {
                   req.cwd,
                   startedAt,
                   deadline,
+                  req.prompt,
                 )
               : await resolveClaude(root.pid, resolveEnv, deadline);
         if (identity) {

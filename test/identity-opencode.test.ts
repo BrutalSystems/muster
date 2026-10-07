@@ -19,6 +19,7 @@ async function endpoint(
   sessions: () => Session[],
   statuses: () => Record<string, unknown> | Promise<Record<string, unknown>>,
   onRequest?: () => void,
+  messages: Record<string, unknown[]> = {},
 ): Promise<string> {
   const server = createServer(async (request, response) => {
     onRequest?.();
@@ -33,6 +34,11 @@ async function endpoint(
     }
     if (request.url === "/session/status") {
       response.end(JSON.stringify(await statuses()));
+      return;
+    }
+    const thread = /^\/session\/([^/]+)\/message$/.exec(request.url ?? "");
+    if (thread && messages[thread[1]!]) {
+      response.end(JSON.stringify(messages[thread[1]!]));
       return;
     }
     response.writeHead(404).end();
@@ -178,6 +184,78 @@ test("does not claim an idle session read from the shared project database", asy
   await expect(
     resolveOpenCode(process.pid, url, cwd, 0, Date.now() + 80),
   ).resolves.toBeUndefined();
+});
+
+function userMessage(sessionID: string, text: string) {
+  return {
+    info: { id: `msg_${sessionID}`, sessionID, role: "user" },
+    parts: [{ id: `prt_${sessionID}`, type: "text", text }],
+  };
+}
+
+// #2: OpenCode drops a session from /session/status the moment it goes idle,
+// so a session whose first turn finished before discovery is absent from the
+// map. It is still ours when it carries the prompt this launch submitted.
+test("resolves a session that went idle before discovery when it carries the launch prompt", async () => {
+  const cwd = await realpath(process.cwd());
+  const url = await endpoint(
+    () => [
+      {
+        id: "ses_quick",
+        title: "quick",
+        directory: cwd,
+        time: { created: Date.now(), updated: Date.now() },
+      },
+    ],
+    () => ({}),
+    undefined,
+    { ses_quick: [userMessage("ses_quick", "say hello")] },
+  );
+
+  await expect(
+    resolveOpenCode(process.pid, url, cwd, 0, Date.now() + 3_000, "say hello"),
+  ).resolves.toMatchObject({ id: "ses_quick", rawName: "quick" });
+});
+
+test("does not claim an idle session whose first message is another launch's prompt", async () => {
+  const cwd = await realpath(process.cwd());
+  const url = await endpoint(
+    () => [
+      {
+        id: "ses_stranger",
+        title: "stranger",
+        directory: cwd,
+        time: { created: Date.now(), updated: Date.now() },
+      },
+    ],
+    () => ({}),
+    undefined,
+    { ses_stranger: [userMessage("ses_stranger", "something else")] },
+  );
+
+  await expect(
+    resolveOpenCode(process.pid, url, cwd, 0, Date.now() + 120, "say hello"),
+  ).resolves.toBeUndefined();
+});
+
+test("an idle prompt match and a busy session together are still ambiguous", async () => {
+  const cwd = await realpath(process.cwd());
+  const session = (id: string): Session => ({
+    id,
+    title: id,
+    directory: cwd,
+    time: { created: Date.now(), updated: Date.now() },
+  });
+  const url = await endpoint(
+    () => [session("ses_idle"), session("ses_busy")],
+    () => ({ ses_busy: { type: "busy" } }),
+    undefined,
+    { ses_idle: [userMessage("ses_idle", "say hello")] },
+  );
+
+  await expect(
+    resolveOpenCode(process.pid, url, cwd, 0, Date.now() + 3_000, "say hello"),
+  ).rejects.toThrow(/multiple OpenCode sessions/i);
 });
 
 test("rejects ambiguous new sessions on the same endpoint and cwd", async () => {
