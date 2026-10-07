@@ -47,6 +47,15 @@ a line still shows there was an error without saying what it was, and the
 task worker follows the launch's log mode. The full error is still in the
 registry entry, and local launches log it as before.
 
+**An OpenCode model its provider does not declare is refused before launch
+(#52).** When `--model`, a model in the runtime options or `[opencode] model`
+names a provider declared under `[opencode.provider]` but an id that provider's
+`models` does not list, muster now refuses with a message naming the table to
+add, such as `[opencode.provider.local.models."qwen2.5-14b"]`. Before, the
+launch reached OpenCode and failed with a bare `Unexpected server error`, which
+for a task showed only in `muster output`. Providers muster does not declare,
+including OpenCode's built-in ones, are unchanged.
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The

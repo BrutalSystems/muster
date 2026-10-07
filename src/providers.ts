@@ -47,6 +47,31 @@ function models(definition: ProviderDefinition) {
     : definition.models;
 }
 
+/**
+ * Refuses an OpenCode model whose provider muster declares but whose id that
+ * provider does not list (#52). OpenCode answers that launch with a bare
+ * "Unexpected server error", and nothing in it points at the missing entry.
+ *
+ * Only providers muster itself declares are checked. A built-in provider
+ * (anthropic, openai) or one from the user's own OpenCode configuration never
+ * appears here, and is OpenCode's to resolve: refusing it would break launches
+ * that work today. A model with no slash is likewise left for OpenCode.
+ */
+export function assertModelDeclared(model: string, config: Config): void {
+  const slash = model.indexOf("/");
+  if (slash <= 0) return;
+  const provider = model.slice(0, slash);
+  const id = model.slice(slash + 1);
+  const definition = Object.hasOwn(config.opencode.provider, provider)
+    ? config.opencode.provider[provider]
+    : undefined;
+  if (definition === undefined || Object.hasOwn(models(definition), id)) return;
+  throw new Error(
+    `model ${id} is not declared under [opencode.provider.${provider}.models]; ` +
+      `add [opencode.provider.${provider}.models.${JSON.stringify(id)}] to ~/.muster/config.toml`,
+  );
+}
+
 function apiKey(
   name: string,
   definition: ProviderDefinition,

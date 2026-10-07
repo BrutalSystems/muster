@@ -722,7 +722,20 @@ test("configured provider and model ride in the overlay, not the user's config",
 });
 
 test("--model overrides the configured default", () => {
-  const config = configSchema.parse(LOCAL_PROVIDER);
+  // The override must itself be declared: since #52 an undeclared id on a
+  // declared provider is refused before launch.
+  const local = LOCAL_PROVIDER.opencode.provider["muster-local"];
+  const config = configSchema.parse({
+    opencode: {
+      ...LOCAL_PROVIDER.opencode,
+      provider: {
+        "muster-local": {
+          ...local,
+          models: { ...local.models, "qwen2.5-14b": {} },
+        },
+      },
+    },
+  });
   const overlay = openCodeConfig(
     runSchema.parse({
       runtime: "opencode",

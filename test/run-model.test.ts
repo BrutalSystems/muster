@@ -1,4 +1,6 @@
 import { test, expect } from "vitest";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fixture } from "./helpers.js";
 import { asSession, asTask } from "./narrow.js";
 import { Muster } from "../src/run.js";
@@ -186,3 +188,33 @@ test("a session launch reports its model, as its listing already does", async ()
     await m.close();
   }
 }, 20000);
+
+test("an OpenCode model its declared provider does not list is refused before anything is reserved", async () => {
+  // #52: otherwise OpenCode fails the launch with "Unexpected server error".
+  const f = await fixture();
+  await writeFile(
+    join(f.home, "config.toml"),
+    '[opencode.provider.local]\nbase_url = "http://127.0.0.1:8080/v1"\n[opencode.provider.local.models."qwen3-30b"]\ntool_call = true\n',
+  );
+  const m = await Muster.create({
+    home: f.home,
+    env: f.env,
+    drivers: [new PtyHost()],
+  });
+  try {
+    await expect(
+      m.run({
+        runtime: "opencode",
+        kind: "task",
+        prompt: "ping",
+        cwd: f.root,
+        model: "local/qwen2.5-14b",
+      }),
+    ).rejects.toThrow(
+      '[opencode.provider.local.models."qwen2.5-14b"] to ~/.muster/config.toml',
+    );
+    expect(await new Registry(f.home).all()).toHaveLength(0);
+  } finally {
+    await m.close();
+  }
+}, 15000);

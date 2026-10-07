@@ -115,9 +115,19 @@ name = "Qwen2.5 14B (local)"
 tool_call = true
 ```
 
-A model the server offers but the config does not list fails at once with
-OpenCode's `Unexpected server error`, and nothing in that message points at the
-missing entry. Check the server is up first; muster does not probe it.
+On its own, OpenCode answers a model the server offers but the config does not
+list with a bare `Unexpected server error`. Muster now refuses that launch up
+front, before anything is reserved, and names the table to add:
+
+```
+model qwen2.5-14b is not declared under [opencode.provider.local.models]; add [opencode.provider.local.models."qwen2.5-14b"] to ~/.muster/config.toml
+```
+
+The check covers `--model`, a model in the runtime options and `[opencode]
+model`. It applies only to providers declared in muster's config: a built-in
+OpenCode provider such as `anthropic` or `openai`, or one from your own OpenCode
+configuration, is left for OpenCode to resolve. Check the server is up first;
+muster does not probe it.
 
 **What an OpenCode launch reads by default.** `--pure` disables plugins only.
 OpenCode still loads the project's `AGENTS.md` (or its `CLAUDE.md` when there is
