@@ -221,6 +221,10 @@ test("a launch sets the server options an attached terminal needs", async () => 
   const show = (args: string[]) =>
     command("tmux", ["-L", server, ...args]).then((s) => s.trim());
   try {
+    // `extended-keys-format` arrived in tmux 3.5. An older tmux (CI's Ubuntu
+    // runner has one) skips it under `set -q`, which is the behaviour wanted,
+    // so the expectation follows what this tmux supports.
+    let keysFormat = "csi-u";
     for (const label of ["first", "second"]) {
       const { hostRef } = await host.launch({
         argv: [process.execPath, "-e", "setInterval(() => {}, 1000)"],
@@ -229,6 +233,10 @@ test("a launch sets the server options an attached terminal needs", async () => 
         label,
       });
       refs.push(hostRef);
+      if (label === "first")
+        keysFormat = await show(["show-options", "-sv", "extended-keys-format"])
+          .then(() => "csi-u")
+          .catch(() => "");
       expect(
         await show([
           "display-message",
@@ -237,7 +245,7 @@ test("a launch sets the server options an attached terminal needs", async () => 
           hostRef,
           "#{history_limit} #{mouse} #{extended-keys} #{extended-keys-format}",
         ]),
-      ).toBe("50000 1 always csi-u");
+      ).toBe(`50000 1 always ${keysFormat}`.trimEnd());
     }
     // Set at a fixed index rather than appended, so a long-lived server does
     // not gain one more copy of the entry with every launch.
