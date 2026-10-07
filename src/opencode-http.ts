@@ -18,6 +18,15 @@ const sessionSchema = z.object({
   }),
 });
 
+// Only what identity needs: who wrote each message and its text parts. Every
+// other field, and every non-text part, passes through unread.
+const messageSchema = z.object({
+  info: z.object({ role: z.string() }).passthrough(),
+  parts: z.array(
+    z.object({ type: z.string(), text: z.string().optional() }).passthrough(),
+  ),
+});
+
 const statusSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("idle") }),
   z.object({ type: z.literal("busy") }),
@@ -49,6 +58,7 @@ const eventSchema = z
 
 export type OpenCodeSession = z.infer<typeof sessionSchema>;
 export type OpenCodeStatus = z.infer<typeof statusSchema>;
+export type OpenCodeMessage = z.infer<typeof messageSchema>;
 export type OpenCodeEvent = z.infer<typeof eventSchema>;
 export type OpenCodeHealth = z.infer<typeof healthSchema>;
 
@@ -172,6 +182,15 @@ export class OpenCodeHttp {
       `/session/${encodeURIComponent(id)}`,
       deadline,
       sessionSchema,
+    );
+  }
+
+  messages(id: string, deadline: number): Promise<OpenCodeMessage[]> {
+    return this.requestJson(
+      "GET",
+      `/session/${encodeURIComponent(id)}/message`,
+      deadline,
+      z.array(messageSchema),
     );
   }
 
