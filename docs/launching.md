@@ -94,7 +94,10 @@ returns an error instead of a peer record.
 Each OpenCode session owns a separate HTTP server bound to `127.0.0.1` on a
 Muster-selected port. Muster verifies that the listener belongs to the launched
 process tree, stores its `server_url` and durable `session_id`, and never attaches
-to an existing personal OpenCode server. `list` refreshes the session through
+to an existing personal OpenCode server. OpenCode keeps every project's sessions
+in one shared database, so Muster claims a new session in the launch directory
+only when that endpoint reports it busy, or, once it has gone idle, when its
+first message is the launch prompt. `list` refreshes the session through
 that endpoint; `stop` aborts it best-effort and still performs authoritative
 process-tree cleanup. The URL is local control metadata, not a public address.
 OpenCode sessions otherwise use the same tmux/pty, viewer, list, stop, and human
