@@ -10,6 +10,33 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**Security: a `work` launch can no longer write muster's own home (#44).** A
+session launched at `--level work` with its cwd at `~/.muster` or above it
+(`--cwd "$HOME"`) could write `~/.muster/config.toml`. That file holds
+`allow_dangerous_flags`, `allowed_roots`, the requester grants and the MCP
+server commands muster runs for later launches, so an agent could widen the
+policy that constrains every launch after it. `work` now means "write the
+launch folder, except muster's own home". This applies to every
+`workspace-write` launch, compared as real paths so a symlinked home is covered
+too.
+
+- **Claude**: the home is in `sandbox.filesystem.denyWrite` for Bash, and an
+  `Edit(//<home>/**)` deny rule covers the in-process file tools, which the OS
+  sandbox does not reach.
+- **Codex**: a `muster_work` permissions profile extends the built-in
+  `:workspace` profile and makes the home read-only. It replaces
+  `--sandbox workspace-write`, because that flag overrides any profile.
+- **OpenCode**: a `work` launch whose cwd is the home, inside it, or an
+  ancestor of it is now **refused**, with an error saying why. OpenCode's
+  permissions are tool policy and cannot keep its shell out of one folder.
+  Launch it in a project folder instead, or at `--level read`.
+
+`read` is unchanged. `open` is out of scope: it is unrestricted by definition,
+and `allow_dangerous_flags` gates it. See
+[docs/permissions.md](docs/permissions.md#musters-own-home-is-never-writable).
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The

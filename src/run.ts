@@ -20,6 +20,7 @@ import {
   resolveTitle,
   sanitiseTitle,
   resolveModel,
+  assertMusterHomeProtectable,
   launchArgs,
   launchEnv,
   paramsFingerprint,
@@ -393,6 +394,10 @@ export class Muster {
     // Refused here, with the other checks that cost nothing to fail: an option
     // the runtime cannot honour must not leave a registry entry behind.
     assertOptionsSupported(req.runtime, req.options, permissions);
+    // A runtime that cannot be told to leave muster's home alone is not
+    // handed a cwd that contains it (#44). Refused here, before anything is
+    // reserved, like the other checks that cost nothing to fail.
+    assertMusterHomeProtectable(req.runtime, req.cwd, permissions, this.home);
     const enforcement = enforcementGrade(req.runtime, permissions);
     assertEnforcementMeetsMinimum(req.runtime, enforcement, policy);
     // Composed here, before any process of any kind is started — the version
@@ -410,7 +415,14 @@ export class Muster {
     const model = resolveModel(effective, this.config);
     if (req.runtime === "opencode") runtimeArgs(effective);
     else
-      argv = launchArgs(effective, this.config, [], undefined, this.sourceEnv);
+      argv = launchArgs(
+        effective,
+        this.config,
+        [],
+        undefined,
+        this.sourceEnv,
+        this.home,
+      );
     const driver =
       req.kind === "session"
         ? await selectHost(req.open ? "tmux" : requestedHost, this.drivers)
@@ -710,6 +722,9 @@ export class Muster {
         prepared.servers,
         bridgePath,
         runtimeEnv,
+        // Muster's own home, not one derived from `runtimeEnv`: an identity
+        // launch may relocate the agent's HOME, but not where muster lives.
+        this.home,
       );
     if (req.runtime === "codex") {
       codexPolicy = await codexPolicyArgs(

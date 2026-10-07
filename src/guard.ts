@@ -2,7 +2,9 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import TOML from "@iarna/toml";
 import type { Config, RequesterProfile } from "./config.js";
 import { claudeConfigDir } from "./identity/claude.js";
 import type { TerminalApp } from "./hosts/types.js";
@@ -159,6 +161,89 @@ export async function assertAllowedWorkspace(
     `cwd is outside every configured allowed root: ${cwd}. ` +
       `Add a root or a project to config.toml, or launch somewhere already permitted.`,
   );
+}
+/**
+ * Where muster keeps its own state when a caller does not say: the same
+ * default `Muster.create` uses, so `launchArgs` called on its own protects the
+ * home a real launch would.
+ */
+export function defaultMusterHome(env: NodeJS.ProcessEnv): string {
+  return join(env.HOME ?? homedir(), ".muster");
+}
+/**
+ * True when a launch at this pair can write under its cwd: every
+ * workspace-write launch. Read-only writes nothing, and full-access (`open`)
+ * is unrestricted by definition and gated by `allow_dangerous_flags` instead.
+ */
+function writesWorkspace(policy: LaunchPermissions): boolean {
+  return policy.sandbox === "workspace-write";
+}
+/**
+ * Refuses a launch that would hand a runtime write access to muster's own home
+ * when that runtime cannot be told to leave the home alone (#44).
+ *
+ * The home holds the machine's policy: `allow_dangerous_flags`, the requester
+ * grants, and the MCP server commands muster runs for every later launch. An
+ * agent that can write it can widen the policy that constrains it.
+ *
+ * Claude and Codex take a path deny in what muster generates for them, so they
+ * are protected there and never refused here. OpenCode's permissions are tool
+ * policy: an `edit` rule can name a path, but a shell command cannot be
+ * confined to one, and `bash` is what `work` grants it. So for OpenCode the
+ * one guarantee is a cwd that does not contain the home — the home is then an
+ * external directory, which `work` already denies. "Overlaps" means the cwd is
+ * the home, inside it, or an ancestor of it (such as `~`), compared as real
+ * paths so a symlink on either side cannot hide it.
+ */
+export function assertMusterHomeProtectable(
+  runtime: RunRequest["runtime"],
+  cwd: string,
+  policy: LaunchPermissions,
+  home: string,
+): void {
+  if (runtime !== "opencode" || !writesWorkspace(policy)) return;
+  // `deny` with workspace-write already denies OpenCode's edit and shell
+  // tools, so it can write nothing anywhere.
+  if (policy.permissions === "deny") return;
+  // Both spellings of each side. Real paths alone miss a home reached through
+  // a symlink: `~/.muster` linking elsewhere is not inside `~` once resolved,
+  // yet writing through `~/.muster` lands in it.
+  const cwds = writeRootSpellings(resolve(cwd));
+  const homes = writeRootSpellings(resolve(home));
+  if (cwds.some((c) => homes.some((h) => contains(h, c) || contains(c, h))))
+    throw new Error(
+      `refusing an opencode ${policy.sandbox} launch in ${cwd}: it contains or ` +
+        `is inside muster's own home (${home}), which holds the config every ` +
+        `later launch obeys. OpenCode's permissions are tool policy and cannot ` +
+        `keep its shell out of one folder, so launch it in a folder that does ` +
+        `not contain muster's home, or at --level read.`,
+    );
+}
+/** Whether `inner` is `outer` or below it, by path segments, not characters. */
+function contains(outer: string, inner: string): boolean {
+  const rel = relative(outer, inner);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+/**
+ * The Codex arguments that make muster's home read-only inside a writable
+ * workspace. A permissions profile is the only Codex config that can carve a
+ * read-only path out of a writable root, and a `--sandbox` flag overrides a
+ * profile, so a workspace-write launch selects this profile instead of passing
+ * `--sandbox workspace-write`. `:workspace` is the built-in profile that flag
+ * names, so everything else about the sandbox is the same.
+ */
+function codexWorkspaceProfile(home: string): string[] {
+  const filesystem = Object.fromEntries(
+    writeRootSpellings(home).map((p) => [p, "read"]),
+  );
+  return [
+    "-c",
+    'default_permissions="muster_work"',
+    "-c",
+    'permissions.muster_work.extends=":workspace"',
+    "-c",
+    `permissions.muster_work.filesystem=${TOML.stringify.value(filesystem)}`,
+  ];
 }
 /**
  * What a request key is bound to, so the same key arriving with different
@@ -518,6 +603,8 @@ export function launchArgs(
   mcp: PreparedMcp[] = [],
   bridgePath?: string,
   env: NodeJS.ProcessEnv = process.env,
+  /** Muster's own home, write-protected at workspace-write (#44). */
+  musterHome: string = defaultMusterHome(env),
 ): string[] {
   // Before `runtimeArgs`, so this function owns every model error on its own
   // rather than by its caller's discipline: `Muster.launch` happens to resolve
@@ -540,20 +627,32 @@ export function launchArgs(
         : policy.permissions === "bypass"
           ? ["--dangerously-bypass-approvals-and-sandbox"]
           : [
-              "--sandbox",
-              policy.sandbox === "full-access"
-                ? "danger-full-access"
-                : policy.sandbox,
+              // Workspace-write is spelled as the profile below instead: the
+              // flag would override it.
+              ...(writesWorkspace(policy)
+                ? []
+                : [
+                    "--sandbox",
+                    policy.sandbox === "full-access"
+                      ? "danger-full-access"
+                      : policy.sandbox,
+                  ]),
               ...(req.kind === "session"
                 ? ["--ask-for-approval", "never"]
                 : ["-c", 'approval_policy="never"']),
             ]),
+      ...(writesWorkspace(policy) ? codexWorkspaceProfile(musterHome) : []),
       ...model,
       ...extra,
       "--",
       req.prompt,
     ];
   const readonly = policy.sandbox === "read-only";
+  // Muster's own home, under both spellings, wherever the launch can write its
+  // cwd: the cwd write grant covers the home when the cwd contains it (#44).
+  const protectedHome = writesWorkspace(policy)
+    ? writeRootSpellings(musterHome)
+    : [];
   const mode =
     policy.permissions === "auto"
       ? "auto"
@@ -585,6 +684,12 @@ export function launchArgs(
       ),
       deny: [
         ...(readonly ? ["Edit", "Write", "NotebookEdit"] : []),
+        // The in-process file tools run outside the OS sandbox, so the
+        // denyWrite below does not reach them. `//` is Claude's spelling of
+        // an absolute path, and an `Edit(path)` rule covers every
+        // file-editing tool: Claude 2.1.293 warns that `Write(path)` is never
+        // matched by its file permission checks.
+        ...protectedHome.map((dir) => `Edit(/${dir}/**)`),
         ...mcp.flatMap((s) =>
           s.excludedTools.map((t) => `mcp__${s.name}__${t}`),
         ),
@@ -604,7 +709,10 @@ export function launchArgs(
         // command exited 1 (#41) — and a deny beats an allow, so the temp dir
         // cannot be allowed back. Both spellings of a symlinked cwd, so this
         // does not rest on Claude normalising the path.
-        denyWrite: readonly ? writeRootSpellings(req.cwd) : [],
+        // At workspace-write, muster's own home is denied instead (#44): it
+        // holds the policy every later launch obeys, and a cwd that contains
+        // it (such as `~`) would otherwise make it writable.
+        denyWrite: readonly ? writeRootSpellings(req.cwd) : protectedHome,
         // The agent's own memory lives under the config dir, outside the cwd
         // that Claude Code defaults the write root to, so Bash writes to it
         // failed with EPERM while the in-process file tools succeeded (#80).

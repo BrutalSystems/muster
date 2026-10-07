@@ -159,11 +159,18 @@ const claudeReq = (level: "read" | "work" | "open") =>
 
 test("a workspace-write claude launch can write its own config dir", () => {
   const dir = mkdtempSync(join(tmpdir(), "muster-cfg-"));
-  const argv = launchArgs(claudeReq("work"), defaults, [], undefined, {
-    CLAUDE_CONFIG_DIR: dir,
-  });
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "muster-home-")));
+  const argv = launchArgs(
+    claudeReq("work"),
+    defaults,
+    [],
+    undefined,
+    { CLAUDE_CONFIG_DIR: dir },
+    home,
+  );
+  // Muster's own home is the one thing denied (#44; test/muster-home.test.ts).
   expect(claudeSettings(argv).sandbox.filesystem).toEqual({
-    denyWrite: [],
+    denyWrite: [home],
     allowWrite: [dir],
   });
 });
