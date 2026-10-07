@@ -56,6 +56,15 @@ launch reached OpenCode and failed with a bare `Unexpected server error`, which
 for a task showed only in `muster output`. Providers muster does not declare,
 including OpenCode's built-in ones, are unchanged.
 
+**The scroll wheel and Shift+Enter work in an attached muster session** (#57).
+Muster's tmux server reads no config file, so it ran on tmux's defaults: the
+wheel could not reach the session's history, the history kept 2000 lines, and
+Shift+Enter reached Claude Code as plain Enter and submitted the prompt. Every
+launch now sets `mouse on`, `history-limit 50000` and extended keys on the
+`muster` server, still without reading `~/.tmux.conf`. A server started by an
+earlier muster picks them up at the next launch; its existing windows keep
+their old history limit. A tmux too old for an option launches without it.
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The

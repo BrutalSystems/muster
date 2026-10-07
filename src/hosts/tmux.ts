@@ -104,6 +104,43 @@ export function titleOptions(
   ];
 }
 /**
+ * What muster's server needs in place of a config file. It runs with `-f
+ * /dev/null` so a developer's ~/.tmux.conf cannot change how muster's sessions
+ * behave, which leaves tmux's own defaults: the scroll wheel never reaches the
+ * pane's history, the history is 2000 lines, and Shift+Enter arrives as plain
+ * Enter, so it submits Claude Code's prompt instead of starting a new line
+ * (#57).
+ *
+ * These go at the front of `new-session`'s command list, not after it:
+ * `history-limit` is read when a pane is created, so a value set once the
+ * window exists never reaches it. Every launch sets them again, which is what
+ * brings a server started by an older muster up to date.
+ *
+ * `extkeys` tells tmux the outer terminal understands extended keys, so it
+ * asks the terminal for them; without it `extended-keys` has nothing to pass
+ * on. It is set at a fixed index rather than appended (`-a`), so a long-lived
+ * server does not gain another copy with every launch. `xterm*` matches the
+ * TERM Ghostty, iTerm2 and Terminal.app report; a terminal that does not
+ * support the request ignores it.
+ *
+ * `-q` because these name options newer than some tmux still installed
+ * (`extended-keys-format` arrived in 3.5, `terminal-features` in 3.2), and an
+ * unknown option is an error that would abort the whole command list and with
+ * it the launch. An older tmux launches as before, without the option.
+ */
+export const SERVER_OPTIONS: string[][] = [
+  ["-g", "mouse", "on"],
+  ["-g", "history-limit", "50000"],
+  ["-s", "extended-keys", "always"],
+  ["-s", "extended-keys-format", "csi-u"],
+  ["-s", "terminal-features[90]", "xterm*:extkeys"],
+];
+/** `SERVER_OPTIONS` as `;`-terminated `set-option` commands, to lead a
+ *  command list. */
+export function serverOptions(): string[] {
+  return SERVER_OPTIONS.flatMap((o) => ["set-option", "-q", ...o, ";"]);
+}
+/**
  * One shell command line for `run-shell`.
  *
  * Two escapes, not one. POSIX single-quoting keeps the shell from splitting an
@@ -231,6 +268,7 @@ export class TmuxHost implements TerminalHost {
       // which is not meaningful for a detached session.
       const output = await this.call(
         [
+          ...serverOptions(),
           "new-session",
           "-s",
           session,
