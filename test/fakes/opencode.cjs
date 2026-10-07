@@ -125,9 +125,17 @@ const sessionReadyAt =
   created +
   Number(process.env.MUSTER_FAKE_OPENCODE_SESSION_MS || legacyReadyMs);
 const statePath = path.join(root, `opencode-${id}.json`);
+// MUSTER_FAKE_OPENCODE_IDLE_BEFORE_DISCOVERY: the first turn has already
+// finished when Muster first looks, so the session is absent from
+// /session/status from the start, as real OpenCode leaves an idle one (#2).
+const idleBeforeDiscovery =
+  process.env.MUSTER_FAKE_OPENCODE_IDLE_BEFORE_DISCOVERY === "1";
 fs.writeFileSync(
   statePath,
-  JSON.stringify({ title: prompt, status: { type: "busy" } }),
+  JSON.stringify({
+    title: prompt,
+    status: { type: idleBeforeDiscovery ? "idle" : "busy" },
+  }),
 );
 fs.appendFileSync(
   path.join(root, "starts.jsonl"),
@@ -321,6 +329,15 @@ setInterval(() => { try { process.kill(info.ownerPid, 0); } catch { server.close
           ? { [id]: visibleStatus }
           : {},
       );
+      return;
+    }
+    if (request.method === "GET" && request.url === `/session/${id}/message`) {
+      json(response, 200, [
+        {
+          info: { id: `msg_${id}`, sessionID: id, role: "user" },
+          parts: [{ id: `prt_${id}`, type: "text", text: prompt }],
+        },
+      ]);
       return;
     }
     if (request.method === "POST" && request.url === `/session/${id}/abort`) {

@@ -48,7 +48,9 @@ test("OpenCode through pty waits for readiness and returns durable endpoint iden
       host: "pty",
     });
     expect(peer.canonical_id).toMatch(
-      new RegExp("^opencode:test-peer\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+      new RegExp(
+        "^opencode:test-peer\\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      ),
     );
     expect(peer.canonical_id.endsWith(peer.session_id)).toBe(true);
     const [entry] = await m.registry.all();
@@ -143,6 +145,36 @@ test("list refreshes OpenCode title and busy/retry state from the persisted endp
     await m.close();
   }
 });
+
+test("an OpenCode session already idle when discovery first looks still launches (#2)", async () => {
+  const f = await fixture({ MUSTER_FAKE_OPENCODE_IDLE_BEFORE_DISCOVERY: "1" });
+  await writeFile(
+    join(f.home, "config.toml"),
+    'host="pty"\nlaunch_timeout_sec=3\n',
+  );
+  const m = await Muster.create({
+    home: f.home,
+    env: f.env,
+    drivers: [new PtyHost()],
+  });
+  try {
+    const peer = asSessionOf(
+      await m.run({
+        runtime: "opencode",
+        prompt: "quick turn",
+        cwd: f.root,
+        host: "pty",
+      }),
+      "opencode",
+    );
+    const [started] = (await lines(join(f.root, "starts.jsonl"))).filter(
+      (record) => record.runtime === "opencode",
+    );
+    expect(peer).toMatchObject({ session_id: started.id, state: "idle" });
+  } finally {
+    await m.close();
+  }
+}, 10_000);
 
 test("a wrong OpenCode endpoint payload times out, cleans the child, and records failure", async () => {
   const f = await fixture({ MUSTER_FAKE_OPENCODE_WRONG_CWD: "1" });
