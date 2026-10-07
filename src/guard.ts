@@ -14,6 +14,7 @@ import { LAUNCH_OPTIONS } from "./options.js";
 import type { RequesterId } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
 import { parseDuration } from "./duration.js";
+import { assertModelDeclared } from "./providers.js";
 export const runSchema = z
   .object({
     runtime: z.enum(["codex", "claude", "opencode"]),
@@ -273,6 +274,16 @@ export function resolveModel(
   req: RunRequest,
   config: Config,
 ): ResolvedModel | null {
+  const resolved = nameModel(req, config);
+  // Every route to a model — --model, args, [opencode] model — passes here,
+  // and this runs before anything is reserved, so an undeclared one leaves no
+  // record behind.
+  if (resolved !== null && req.runtime === "opencode")
+    assertModelDeclared(resolved.model, config);
+  return resolved;
+}
+
+function nameModel(req: RunRequest, config: Config): ResolvedModel | null {
   const inArgs = modelInArgs(req.args);
   if (req.model !== undefined && inArgs !== undefined)
     throw new Error(

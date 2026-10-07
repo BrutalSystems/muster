@@ -198,3 +198,74 @@ test("launchArgs raises the model error before the runtime-option error", () => 
     ),
   ).toThrow(/twice/i);
 });
+
+// #52: OpenCode answers a model its provider does not declare with a bare
+// "Unexpected server error". Muster refuses it first, naming the table to add.
+const declared = configSchema.parse({
+  opencode: {
+    provider: {
+      local: {
+        base_url: "http://127.0.0.1:8080/v1",
+        models: { "qwen3-30b": { tool_call: true } },
+      },
+      listed: { models: ["a"] },
+    },
+  },
+});
+const opencode = (over: Record<string, unknown>) =>
+  req({ runtime: "opencode", ...over });
+
+test("an undeclared model on a declared provider is refused, naming the table", () => {
+  expect(() =>
+    resolveModel(opencode({ model: "local/qwen2.5-14b" }), declared),
+  ).toThrow(
+    'model qwen2.5-14b is not declared under [opencode.provider.local.models]; add [opencode.provider.local.models."qwen2.5-14b"] to ~/.muster/config.toml',
+  );
+});
+
+test("the same refusal covers a model in args and the configured default", () => {
+  expect(() =>
+    resolveModel(opencode({ args: ["--model", "local/nope"] }), declared),
+  ).toThrow(/not declared under \[opencode\.provider\.local\.models\]/);
+  const withDefault = configSchema.parse({
+    opencode: { model: "local/nope", provider: declared.opencode.provider },
+  });
+  expect(() => resolveModel(opencode({}), withDefault)).toThrow(
+    /model nope is not declared/,
+  );
+});
+
+test("a declared model resolves as before, in either models form", () => {
+  expect(
+    resolveModel(opencode({ model: "local/qwen3-30b" }), declared),
+  ).toEqual({ model: "local/qwen3-30b", source: "request", origin: "flag" });
+  expect(resolveModel(opencode({ model: "listed/a" }), declared)?.model).toBe(
+    "listed/a",
+  );
+});
+
+test("an array-form provider refuses an id it does not list", () => {
+  expect(() => resolveModel(opencode({ model: "listed/b" }), declared)).toThrow(
+    "[opencode.provider.listed.models]",
+  );
+});
+
+test("a provider muster does not declare is left for OpenCode to resolve", () => {
+  // Built-in providers (anthropic, openai) and ones from the user's own
+  // OpenCode config never appear in muster's config; guessing would break them.
+  expect(
+    resolveModel(opencode({ model: "anthropic/claude-x" }), declared)?.model,
+  ).toBe("anthropic/claude-x");
+});
+
+test("a model id containing a slash is checked against the first segment only", () => {
+  const nested = configSchema.parse({
+    opencode: { provider: { router: { models: ["vendor/m"] } } },
+  });
+  expect(
+    resolveModel(opencode({ model: "router/vendor/m" }), nested)?.model,
+  ).toBe("router/vendor/m");
+  expect(() =>
+    resolveModel(opencode({ model: "router/vendor/other" }), nested),
+  ).toThrow('[opencode.provider.router.models."vendor/other"]');
+});
