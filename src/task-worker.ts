@@ -8,8 +8,9 @@ import {
   stopTree,
 } from "./identity/processes.js";
 import { LaunchLog } from "./log.js";
+import type { TaskSpec } from "./run.js";
 const file = process.argv[2]!;
-const spec = JSON.parse(await readFile(file, "utf8"));
+const spec = JSON.parse(await readFile(file, "utf8")) as TaskSpec;
 await rm(file);
 // The parent records ownership before authorizing the runtime to start.
 const deadline = Date.now() + 10000;
@@ -24,7 +25,7 @@ while (true) {
   }
 }
 const output = await open(spec.outputPath, "a", 0o600);
-const child = spawn(spec.argv[0], spec.argv.slice(1), {
+const child = spawn(spec.argv[0]!, spec.argv.slice(1), {
   cwd: spec.cwd,
   env: spec.env,
   stdio: ["ignore", output.fd, output.fd],
@@ -40,13 +41,16 @@ async function finish(
   try {
     await output.close();
     if (spec.mcpConfigPath) await rm(spec.mcpConfigPath, { force: true });
-    await new LaunchLog(spec.logHome).write({
-      event: "task_exit",
-      launch_id: spec.launchId,
-      exit_code: code,
-      signal,
-      error,
-    });
+    await new LaunchLog(spec.logHome).write(
+      {
+        event: "task_exit",
+        launch_id: spec.launchId,
+        exit_code: code,
+        signal,
+        error,
+      },
+      spec.logMode,
+    );
   } finally {
     try {
       await writeFile(spec.exitPath, JSON.stringify({ code, signal, error }), {
