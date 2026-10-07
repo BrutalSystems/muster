@@ -37,6 +37,16 @@ too.
 and `allow_dangerous_flags` gates it. See
 [docs/permissions.md](docs/permissions.md#musters-own-home-is-never-writable).
 
+**Metadata-only launch logs no longer carry error text (#26).** A non-local
+launch logs metadata only, but two events slipped past that. A `failure`
+line's `error` was written as is, and a tmux error can quote the window name,
+which is a slice of the prompt. And a task's `task_exit` line was always
+written in full, because the task worker was never told the log mode. In
+metadata mode `error` is now the fixed text `withheld (metadata-only log)`, so
+a line still shows there was an error without saying what it was, and the
+task worker follows the launch's log mode. The full error is still in the
+registry entry, and local launches log it as before.
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The

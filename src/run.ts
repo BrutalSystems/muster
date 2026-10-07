@@ -152,6 +152,25 @@ function provisionalTitle(req: Pick<RunRequest, "cwd" | "runtime">): string {
   return sanitiseTitle(`${basename(req.cwd)} · ${req.runtime}`);
 }
 
+/**
+ * The spec `startTask` hands the task worker, which runs in its own process
+ * and learns nothing else about the launch. `logMode` is required so the
+ * worker's `task_exit` line honours the requester's log mode (#26); before it
+ * was here the worker always wrote in full mode.
+ */
+export type TaskSpec = {
+  argv: string[];
+  cwd: string;
+  env: Record<string, string>;
+  outputPath: string;
+  exitPath: string;
+  startPath: string;
+  logHome: string;
+  logMode: "full" | "metadata";
+  launchId: string;
+  mcpConfigPath?: string;
+};
+
 export class Muster {
   readonly registry: Registry;
   private log: LaunchLog;
@@ -1370,9 +1389,10 @@ export class Muster {
         exitPath,
         startPath,
         logHome: this.home,
+        logMode,
         launchId: entry.launchId,
         mcpConfigPath: entry.mcpConfigPath,
-      }),
+      } satisfies TaskSpec),
       { mode: 0o600 },
     );
     const child = spawn(

@@ -39,6 +39,16 @@ export const METADATA_RECORD_KEEP = [
   "plugins",
 ] as const;
 /**
+ * What an `error` becomes in metadata mode. An error is free text, and some of
+ * it is prompt-derived: a tmux error quotes the host's own output, and the
+ * window name is a slice of the prompt (#26). Free text cannot be allowlisted
+ * field by field the way a record is, so the only safe projection of the
+ * string is a constant. The key is kept rather than dropped so a metadata line
+ * still says a launch failed with an error, which an absent key would not;
+ * the text stays in the registry entry, which is not this log.
+ */
+export const ERROR_WITHHELD = "withheld (metadata-only log)";
+/**
  * `requester` is the one nested object passed through whole: the spec keeps the
  * tuple and its label, and a label is supplied by the receiver's own config,
  * never derived from the request.
@@ -85,18 +95,20 @@ export class LaunchLog {
                 ([k]) => !(METADATA_DROP as readonly string[]).includes(k),
               )
               .map(([k, v]) =>
-                isRecord(v) && !PASS_THROUGH.includes(k)
-                  ? [
-                      k,
-                      Object.fromEntries(
-                        Object.entries(v).filter(([field]) =>
-                          (METADATA_RECORD_KEEP as readonly string[]).includes(
-                            field,
+                k === "error" && v !== undefined
+                  ? [k, ERROR_WITHHELD]
+                  : isRecord(v) && !PASS_THROUGH.includes(k)
+                    ? [
+                        k,
+                        Object.fromEntries(
+                          Object.entries(v).filter(([field]) =>
+                            (
+                              METADATA_RECORD_KEEP as readonly string[]
+                            ).includes(field),
                           ),
                         ),
-                      ),
-                    ]
-                  : [k, v],
+                      ]
+                    : [k, v],
               ),
           );
     const file = await open(path, "a", 0o600);
