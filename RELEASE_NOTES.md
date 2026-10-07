@@ -10,6 +10,17 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**An OpenCode model its provider does not declare is refused before launch
+(#52).** When `--model`, a model in the runtime options or `[opencode] model`
+names a provider declared under `[opencode.provider]` but an id that provider's
+`models` does not list, muster now refuses with a message naming the table to
+add, such as `[opencode.provider.local.models."qwen2.5-14b"]`. Before, the
+launch reached OpenCode and failed with a bare `Unexpected server error`, which
+for a task showed only in `muster output`. Providers muster does not declare,
+including OpenCode's built-in ones, are unchanged.
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The
