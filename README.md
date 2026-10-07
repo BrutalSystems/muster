@@ -76,14 +76,14 @@ muster stop <id>
 ```
 
 `--level` names a containment pair. `read` can look but not change; `work` can
-edit its working directory; `open` removes the sandbox and needs
-`allow_dangerous_flags` in config.
+edit its working directory, except muster's own home (`~/.muster`); `open`
+removes the sandbox and needs `allow_dangerous_flags` in config.
 
-| Level  | The agent asks before acting | What it may touch |
-| ------ | ---------------------------- | ----------------- |
-| `read` | always                       | nothing on disk   |
-| `work` | no                           | its cwd           |
-| `open` | no                           | everything        |
+| Level  | The agent asks before acting | What it may touch           |
+| ------ | ---------------------------- | --------------------------- |
+| `read` | always                       | nothing on disk             |
+| `work` | no                           | its cwd, except `~/.muster` |
+| `open` | no                           | everything                  |
 
 Claude asks to trust a directory the first time. That is a one-time review you
 do yourself — or `--options auto-approve-path`, which records it for you after

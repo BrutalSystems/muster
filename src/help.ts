@@ -75,7 +75,7 @@ export const COMMANDS: Command[] = [
       ],
       [
         "--level LEVEL",
-        "read, work, or open: a legal permissions and sandbox pair",
+        "read, work, or open: a legal permissions and sandbox pair; work writes the launch folder except muster's own home",
       ],
       ["--permissions MODE", "auto, deny, or bypass"],
       ["--sandbox MODE", "read-only, workspace-write, or full-access"],

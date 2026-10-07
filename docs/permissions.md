@@ -257,6 +257,29 @@ than a boundary.
 Under `read` nothing is writable, including the config dir. Under `full-access`
 there is no sandbox to grant into.
 
+#### Muster's own home is never writable
+
+`work` means **write the launch folder, except muster's own home** (`~/.muster`,
+compared as a real path, so a symlinked home is covered under both spellings).
+That directory holds `config.toml` — `allow_dangerous_flags`, `allowed_roots`,
+the requester grants, and the MCP server commands muster runs for every later
+launch — so an agent able to write it could widen the policy that constrains
+it. Through 1.2.0 a `work` launch whose cwd was `~/.muster` or contained it
+(`--cwd "$HOME"`) could do exactly that (#44). Every `workspace-write` launch,
+not only `--level work`, now gets:
+
+| Runtime  | How the home is protected                                                                                                                                                                                                                       |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude   | Listed in `sandbox.filesystem.denyWrite` for Bash, plus an `Edit(//<home>/**)` deny rule for the in-process file tools, which the OS sandbox does not cover. An `Edit` rule covers `Write` and `NotebookEdit` too.                               |
+| Codex    | A permissions profile, `muster_work`, that extends the built-in `:workspace` profile and makes the home `read`. It replaces `--sandbox workspace-write`, because that flag overrides any profile.                                                 |
+| OpenCode | **Refused** when the cwd is the home, inside it, or an ancestor of it. OpenCode's permissions are tool policy: a shell command cannot be confined to one folder. With the home outside the cwd, `external_directory`, denied at `work`, covers it. |
+
+Codex's `--approve-for-me` (`work`) still routes a write outside the writable
+roots to Codex's own automatic reviewer, which can approve it; the profile makes
+the home as hard to reach as any other folder outside the workspace, not
+harder. `read` is unchanged. `open` is out of scope: it is unrestricted by
+definition, and `allow_dangerous_flags` is what gates it.
+
 One path stays denied that muster cannot open: **`$CLAUDE_CONFIG_DIR/projects/`**
 (and `shell-snapshots/`). Claude Code refuses writes there in a sandboxed Bash
 regardless of what muster grants — naming those directories explicitly in
