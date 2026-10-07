@@ -2,7 +2,7 @@ import { mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { LaunchLog } from "../src/log.js";
+import { ERROR_WITHHELD, LaunchLog } from "../src/log.js";
 import { lines } from "./helpers.js";
 
 async function log() {
@@ -58,11 +58,42 @@ test("metadata mode drops captured output and environment alike", async () => {
     "metadata",
   );
   const [written] = await lines(file);
-  expect(written.error).toBe("boom");
   expect(written.diagnostic).toBeUndefined();
   expect(written.env).toBeUndefined();
   // Kept: the argv allowlist cannot carry instruction text or a credential.
   expect(written.args).toEqual(["--model", "gpt-5"]);
+});
+
+test("metadata mode withholds an error's text but records that there was one", async () => {
+  // An error string is free text, and some carry the prompt: tmux quotes its
+  // own output, and the window name is a slice of the prompt (#26).
+  const { log: l, file } = await log();
+  await l.write(
+    { event: "failure", launch_id: "l1", error: "bad window zqxjplover" },
+    "metadata",
+  );
+  const [written] = await lines(file);
+  expect(JSON.stringify(written)).not.toContain("zqxjplover");
+  expect(written.error).toBe(ERROR_WITHHELD);
+  expect(written.launch_id).toBe("l1");
+});
+
+test("full mode keeps an error's text", async () => {
+  const { log: l, file } = await log();
+  await l.write({ event: "failure", launch_id: "l1", error: "boom" });
+  const [written] = await lines(file);
+  expect(written.error).toBe("boom");
+});
+
+test("metadata mode writes no error key when there was no error", async () => {
+  const { log: l, file } = await log();
+  // `error: undefined` is what the task worker passes on a clean exit.
+  await l.write(
+    { event: "task_exit", launch_id: "l1", exit_code: 0, error: undefined },
+    "metadata",
+  );
+  const [written] = await lines(file);
+  expect("error" in written).toBe(false);
 });
 
 test("the file rotates at its ceiling and keeps one generation at 0600", async () => {

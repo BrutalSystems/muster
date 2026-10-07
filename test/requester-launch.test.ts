@@ -6,6 +6,7 @@ import { launchArgs, runSchema } from "../src/guard.js";
 import { openCodeConfig } from "../src/opencode-policy.js";
 import { Muster } from "../src/run.js";
 import { PtyHost } from "../src/hosts/pty.js";
+import type { LaunchOptions } from "../src/hosts/types.js";
 import { delay } from "../src/identity/processes.js";
 import {
   RequesterNotEnrolled,
@@ -209,6 +210,39 @@ test("a remote launch records provenance, grade and a log with no trace of the p
       expect(JSON.stringify(line)).not.toContain(TOKEN);
       if (line.requester) expect(line.requester).toEqual(remote);
     }
+  } finally {
+    await m.close();
+  }
+}, 15000);
+
+test("a remote launch that fails leaves no trace of the prompt in its log", async () => {
+  // The failure path, which #26 found outside the projection: a host error is
+  // free text and can quote what it was given. This host quotes its whole
+  // argv, which ends in the prompt, so the `failure` event's `error` carries
+  // the token unless the log withholds it.
+  class QuotingHost extends PtyHost {
+    override async launch(opts: LaunchOptions): Promise<never> {
+      throw new Error(`malformed host output: ${opts.argv.join(" ")}`);
+    }
+  }
+  const f = await fixture();
+  await writeFile(join(f.home, "config.toml"), enrolled());
+  const m = await Muster.create({
+    home: f.home,
+    env: f.env,
+    drivers: [new QuotingHost()],
+  });
+  try {
+    const error = await m
+      .run({ runtime: "codex", prompt: TOKEN, cwd: f.root }, remote)
+      .catch((e: Error) => e);
+    // Proof the token really was in the error, so the log assertion below is
+    // not vacuous.
+    expect((error as Error).message).toContain(TOKEN);
+    const written = await lines(join(f.home, "launches.jsonl"));
+    expect(written.some((l) => l.event === "failure")).toBe(true);
+    for (const line of written)
+      expect(JSON.stringify(line)).not.toContain(TOKEN);
   } finally {
     await m.close();
   }
