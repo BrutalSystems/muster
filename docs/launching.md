@@ -81,6 +81,13 @@ and `attach_hint`. Watchability is separate from the runtime's idle/busy state.
   switch another agent's viewer.
   Watchable and attachable; survives the CLI or MCP server exiting.
   Use the returned attach hint to reconnect to that agent.
+  The server reads no tmux config (`-f /dev/null`), so your `~/.tmux.conf`
+  never changes how a muster session behaves. Muster sets what an attached
+  terminal needs instead: `mouse on`, so the scroll wheel reaches the
+  session's history; `history-limit 50000`; and extended keys
+  (`extended-keys always`, `extended-keys-format csi-u`, `xterm*:extkeys`), so
+  Shift+Enter reaches Claude Code as a new line instead of submitting the
+  prompt. A tmux too old for an option launches without it.
 - **pty:** not watchable or attachable. The CLI prints the peer record and stays
   running to own the terminal. Ctrl-C stops it. MCP-owned pty sessions stop when
   the MCP server disconnects. There is no persistent pty daemon.

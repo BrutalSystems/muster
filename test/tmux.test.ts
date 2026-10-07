@@ -206,3 +206,47 @@ test("launch, list and stop work with no UTF-8 locale set", async () => {
     await command("tmux", ["-L", server, "kill-server"]).catch(() => {});
   }
 }, 20000);
+
+/**
+ * Muster's server reads no config (`-f /dev/null`), so tmux's own defaults are
+ * what an attached terminal gets: the wheel cannot reach scrollback, the
+ * history is 2000 lines, and Shift+Enter arrives as Enter and submits the
+ * prompt (#57). The options muster needs are set by muster, before the pane
+ * exists — `history-limit` is read when a pane is created, never after.
+ */
+test("a launch sets the server options an attached terminal needs", async () => {
+  const server = testServer("server-options");
+  const host = new TmuxHost(server);
+  const refs: string[] = [];
+  const show = (args: string[]) =>
+    command("tmux", ["-L", server, ...args]).then((s) => s.trim());
+  try {
+    for (const label of ["first", "second"]) {
+      const { hostRef } = await host.launch({
+        argv: [process.execPath, "-e", "setInterval(() => {}, 1000)"],
+        cwd: process.cwd(),
+        env: process.env as Record<string, string>,
+        label,
+      });
+      refs.push(hostRef);
+      expect(
+        await show([
+          "display-message",
+          "-p",
+          "-t",
+          hostRef,
+          "#{history_limit} #{mouse} #{extended-keys} #{extended-keys-format}",
+        ]),
+      ).toBe("50000 1 always csi-u");
+    }
+    // Set at a fixed index rather than appended, so a long-lived server does
+    // not gain one more copy of the entry with every launch.
+    const features = (await show(["show-options", "-s", "terminal-features"]))
+      .split("\n")
+      .filter((row) => row.includes("extkeys"));
+    expect(features).toEqual([expect.stringMatching(/ xterm\*:extkeys$/)]);
+  } finally {
+    for (const ref of refs) await host.stop(ref).catch(() => {});
+    await command("tmux", ["-L", server, "kill-server"]).catch(() => {});
+  }
+}, 20000);

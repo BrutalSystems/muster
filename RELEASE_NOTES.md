@@ -10,6 +10,17 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**The scroll wheel and Shift+Enter work in an attached muster session** (#57).
+Muster's tmux server reads no config file, so it ran on tmux's defaults: the
+wheel could not reach the session's history, the history kept 2000 lines, and
+Shift+Enter reached Claude Code as plain Enter and submitted the prompt. Every
+launch now sets `mouse on`, `history-limit 50000` and extended keys on the
+`muster` server, still without reading `~/.tmux.conf`. A server started by an
+earlier muster picks them up at the next launch; its existing windows keep
+their old history limit. A tmux too old for an option launches without it.
+
 ## 1.2.0 — 2026-09-27
 
 **Muster titles the terminal of every tmux session it launches** (#48). The
