@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.2.1 — 2026-10-07
 
 **Security: a `work` launch can no longer write muster's own home (#44).** A
 session launched at `--level work` with its cwd at `~/.muster` or above it
