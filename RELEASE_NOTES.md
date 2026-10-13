@@ -12,6 +12,25 @@ as patches, so do not read an old entry under the new rule.
 
 ## Unreleased
 
+**Breaking: `muster mcp` is now read-only by default.** Bare `muster mcp` —
+and bare `muster` with stdin not a terminal, which is the same server — now
+exposes only `list` and `output`. `run`, `stop` and `title` are exposed only
+when the server is started with `muster mcp --allow-launch`, and a call to a
+tool the server does not expose is refused, not just left out of the listing.
+**If you start `muster mcp` yourself to launch sessions from an agent (a
+`--mcp-config` or `-c mcp_servers.muster` definition, or an entry in Muster's
+own `[mcp_servers]`), add `--allow-launch` to its arguments** or `run` will be
+refused. Nothing else about the tools changed.
+
+**`muster mcp install | uninstall | status` registers the server with Claude
+Code.** `install` runs `claude mcp add --scope user muster -- <muster> mcp`
+for the current profile (`CLAUDE_CONFIG_DIR`). Because the server is read-only
+by default, user scope is now a safe place for it; `--allow-launch` is the
+deliberate grant, and without it `install` asks at a terminal (default no) and
+never grants without one. It is idempotent, replaces a different existing
+definition only with `--force`, and fails clearly when `claude` is not on PATH.
+`status` reports whether it is registered and whether launch is allowed.
+
 **A Claude Code plugin ships with the repository.** Its `muster` skill teaches
 a Claude session to launch, reach and stop sessions and tasks well: choosing a
 kind and level, what a launch keeps from the profile, workspace trust, and the

@@ -53,6 +53,23 @@ export type SelectedMcp = {
 export type PreparedMcp = SelectedMcp & { excludedTools: string[] };
 export type McpSummary = { mcp: string[]; mcp_warnings?: string[] };
 
+/**
+ * One allowlist, applied to both halves of an MCP server: what `tools/list`
+ * advertises and what `tools/call` will dispatch. Used by the Claude bridge
+ * (the operator's selected tools of an upstream server) and by Muster's own
+ * server (read-only unless started with `--allow-launch`). Filtering the
+ * listing alone is not enough — a client can call a name it was never shown —
+ * so every call is checked against the same set.
+ */
+export function toolGate(enabled: readonly string[]) {
+  const names = new Set(enabled);
+  return {
+    expose: <T extends { name: string }>(tools: readonly T[]): T[] =>
+      tools.filter((tool) => names.has(tool.name)),
+    allows: (name: string) => names.has(name),
+  };
+}
+
 export function selectMcp(req: RunRequest, config: Config): SelectedMcp[] {
   // Personal defaults apply to sessions, not unattended one-shot tasks.
   const names = req.mcp ?? (req.kind === "session" ? config.default_mcp : []);

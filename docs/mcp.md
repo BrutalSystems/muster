@@ -124,15 +124,17 @@ tincan --version
 ```
 
 Registering Muster itself is the one case to think twice about. A definition
-whose command runs `muster mcp` gives every session that selects it `run`,
-`list`, `stop` and `output` — launch authority, held by an agent rather than by
-you. Put it in `default_mcp` and every session muster launches can launch more,
-which is the propagation the child restrictions above exist to prevent;
-`max_concurrent` caps simultaneous launches but does not stop a tree forming.
-Nothing in Muster refuses this, so the restraint has to be yours. If you want
-an orchestrating agent, give exactly that one session an explicit
-`--mcp muster` and leave `default_mcp` alone. See "MCP installation" below for
-the same stance applied to a runtime's own shared configuration.
+whose command runs `muster mcp --allow-launch` gives every session that selects
+it `run`, `stop` and `title` as well as `list` and `output` — launch authority,
+held by an agent rather than by you. Put it in `default_mcp` and every session
+muster launches can launch more, which is the propagation the child
+restrictions above exist to prevent; `max_concurrent` caps simultaneous
+launches but does not stop a tree forming. Nothing in Muster refuses this, so
+the restraint has to be yours. If you want an orchestrating agent, give exactly
+that one session an explicit `--mcp muster` and leave `default_mcp` alone. A
+definition running plain `muster mcp` is read-only and grants none of this.
+See "MCP installation" below for the same stance applied to a runtime's own
+shared configuration.
 
 `--mcp NAME` is repeatable and **replaces** personal defaults. `--no-mcp` clears
 them and cannot be combined with `--mcp`. MCP `run` takes `mcp: ["tincan"]`;
@@ -188,32 +190,69 @@ selected external tool may have its own write or network capabilities.
 
 ## MCP installation
 
-Installed deliberately, in the one session that should hold spawn authority —
-never at user scope.
+Muster's MCP server is **read-only by default**. Launch authority is a separate,
+deliberate grant: `--allow-launch`.
 
-Muster exposes `run`, `list`, `stop`, and `output` over stdio. `mcp` starts the
-server, and so does no arguments when stdin is not a terminal — which is what an
-MCP client provides. Typing `muster` at a terminal prints the usage text and a
-short status instead, because a server waiting for JSON-RPC on stdin is
-indistinguishable from a hang. `muster mcp` starts the server either way, so it
-can still be driven by hand to debug it. Diagnostics go to stderr, never protocol stdout.
-Schemas match the CLI (`args` is the array of optional runtime arguments).
+| Started as | Tools exposed |
+| --- | --- |
+| `muster mcp` (or `muster` with stdin not a terminal) | `list`, `output` |
+| `muster mcp --allow-launch` | `list`, `output`, `run`, `stop`, `title` |
 
-For a single Codex session, use per-invocation configuration:
+The read-only server can see what Muster owns and read a task's output; it
+cannot start, stop or retitle anything. A tool it does not expose is refused
+when called, not merely left out of the listing, so a client cannot reach `run`
+by naming it.
+
+`mcp` starts the server, and so does no arguments when stdin is not a terminal —
+which is what an MCP client provides. Typing `muster` at a terminal prints the
+usage text and a short status instead, because a server waiting for JSON-RPC on
+stdin is indistinguishable from a hang. `muster mcp` starts the server either
+way, so it can still be driven by hand to debug it. Diagnostics go to stderr,
+never protocol stdout. Schemas match the CLI (`args` is the array of optional
+runtime arguments).
+
+### Registering it with Claude Code
 
 ```sh
-codex -c 'mcp_servers.muster.command="node"' \
-  -c 'mcp_servers.muster.args=["/absolute/path/to/muster/dist/muster.js","mcp"]'
+muster mcp install                  # read-only, at user scope
+muster mcp install --allow-launch   # this Claude may launch and stop sessions
+muster mcp status                   # registered? launch allowed?
+muster mcp uninstall
 ```
 
-For a single Claude session:
+`install` runs `claude mcp add --scope user muster -- <muster> mcp [--allow-launch]`
+for the profile `CLAUDE_CONFIG_DIR` names (the default profile when it is
+unset). `<muster>` is the `muster` on PATH when that is the copy you ran;
+otherwise the absolute path of node and the script you ran. Restart Claude Code,
+or start a new session, to load it.
+
+User scope is fine for the read-only server: every session sees what Muster has
+running, and none of them gains the power to launch more. Without
+`--allow-launch`, `install` asks at a terminal — *Let this Claude launch and stop
+sessions? [y/N]* — and defaults to no; without a terminal it never grants.
+
+Running it again with the same definition changes nothing and says so. A
+different existing `muster` definition — the other mode, or another install of
+Muster — is shown alongside the new one and replaced only with `--force`.
+`uninstall` is a no-op with a message when nothing is registered. `install` and
+`uninstall` fail with a clear message when `claude` is not on PATH.
+
+`--allow-launch` at user scope gives **every** session in that profile launch
+authority. Grant it only where that is what you want, for example on a profile
+you keep for orchestrating. To give it to a single session instead, leave the
+user-scope registration read-only and pass a per-invocation definition:
 
 ```sh
-claude --mcp-config '{"mcpServers":{"muster":{"command":"node","args":["/absolute/path/to/muster/dist/muster.js","mcp"]}}}'
+claude --mcp-config '{"mcpServers":{"muster":{"command":"muster","args":["mcp","--allow-launch"]}}}'
 ```
 
-Do not add Muster to `~/.codex/config.toml`, Claude's user-scope MCP registry,
-or another shared configuration that grants launch authority to every agent.
-The same applies to Muster's own `[mcp_servers]`: a definition that runs
-`muster mcp`, selected by `default_mcp`, grants that authority to every session
-Muster launches.
+For a single Codex session:
+
+```sh
+codex -c 'mcp_servers.muster.command="muster"' \
+  -c 'mcp_servers.muster.args=["mcp","--allow-launch"]'
+```
+
+The same caution applies to Muster's own `[mcp_servers]`: a definition that
+runs `muster mcp --allow-launch`, selected by `default_mcp`, grants launch
+authority to every session Muster launches, and each of those can launch more.

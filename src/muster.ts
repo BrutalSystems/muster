@@ -19,7 +19,15 @@ import {
   setupIdentity,
 } from "./identity-cli.js";
 import { IdentityError } from "./identity-store.js";
-import { MCP_TOOLS } from "./mcp-tools.js";
+import { MCP_TOOLS, mcpToolNames } from "./mcp-tools.js";
+import { toolGate } from "./mcp.js";
+import {
+  ALLOW_LAUNCH,
+  MCP_SUBCOMMANDS,
+  mcpCommand,
+  notEnabled,
+  selfInvocation,
+} from "./mcp-install.js";
 import { normalizeOpenFlag, usesTerminalFlag } from "./guard.js";
 import { commandHelp, topLevelHelp } from "./help.js";
 import { promptForMissing, terminalReader } from "./prompt.js";
@@ -97,8 +105,32 @@ async function main() {
   // driven by hand in a terminal to debug it.
   const bareAtTerminal = argv.length === 0 && Boolean(process.stdin.isTTY);
   const mcp = !bareAtTerminal && (argv.length === 0 || argv[0] === "mcp");
-  if (argv[0] === "mcp" && argv.length > 1)
-    throw new Error("mcp takes no arguments");
+  // `muster mcp install|uninstall|status` registers the server with Claude
+  // Code rather than serving it. Handled before Muster.create(): none of them
+  // touches a run.
+  if (
+    argv[0] === "mcp" &&
+    (MCP_SUBCOMMANDS as readonly string[]).includes(argv[1] ?? "")
+  ) {
+    if (argv.includes("--help") || argv.includes("-h")) {
+      process.stdout.write(commandHelp("mcp")!);
+      return;
+    }
+    await mcpCommand(argv.slice(1), {
+      env: process.env,
+      write: (s) => process.stdout.write(s),
+      ...(process.stdin.isTTY ? { ask: terminalReader() } : {}),
+      self: () => selfInvocation(process.env),
+    });
+    return;
+  }
+  // Read-only unless launching is granted by the flag. Bare `muster` down a
+  // pipe is the same server, so it is read-only too.
+  const allowLaunch = argv[0] === "mcp" && argv[1] === ALLOW_LAUNCH;
+  if (argv[0] === "mcp" && argv.length > (allowLaunch ? 2 : 1))
+    throw new Error(
+      `mcp takes ${ALLOW_LAUNCH}, or one of ${MCP_SUBCOMMANDS.join(", ")}`,
+    );
   const muster = await Muster.create();
   let shutdown: Promise<void> | undefined;
   const close = () =>
@@ -143,10 +175,16 @@ async function main() {
       { name: "muster", version },
       { capabilities: { tools: {} } },
     );
+    const gate = toolGate(mcpToolNames(allowLaunch));
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: MCP_TOOLS,
+      tools: gate.expose(MCP_TOOLS),
     }));
     server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+      if (!gate.allows(params.name))
+        return {
+          content: [{ type: "text" as const, text: notEnabled(params.name) }],
+          isError: true,
+        };
       try {
         const args = params.arguments ?? {};
         switch (params.name) {

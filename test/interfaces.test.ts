@@ -113,7 +113,8 @@ test("MCP uses the same tools, no stdout diagnostics, and closing stops owned pt
   const f = await fixture();
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: [cli, "mcp"],
+    // Launching over MCP is the explicit grant; read-only is the default.
+    args: [cli, "mcp", "--allow-launch"],
     env: f.env,
     stderr: "pipe",
   });

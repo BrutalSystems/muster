@@ -183,3 +183,20 @@ export const MCP_TOOLS = [
  * callers may not set the field, not a place to park an oversight.
  */
 export const RUN_MCP_OMITTED: readonly string[] = [];
+/**
+ * What `muster mcp` serves by default: reading what Muster already owns.
+ * Nothing here can start, stop or change a run, so registering the server
+ * where every Claude session sees it grants no launch authority.
+ */
+export const READ_ONLY_TOOLS = ["list", "output"] as const;
+/**
+ * Added by `muster mcp --allow-launch`, the deliberate grant. `title` is here
+ * rather than above because it changes a running session, and the read-only
+ * set is defined as changing nothing.
+ */
+export const LAUNCH_TOOLS = ["run", "stop", "title"] as const;
+export function mcpToolNames(allowLaunch: boolean): string[] {
+  return allowLaunch
+    ? [...READ_ONLY_TOOLS, ...LAUNCH_TOOLS]
+    : [...READ_ONLY_TOOLS];
+}

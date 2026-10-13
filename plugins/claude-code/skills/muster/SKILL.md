@@ -1,6 +1,6 @@
 ---
 name: muster
-description: "Use when asked to launch, start, spin up or muster an agent session or one-shot task (Claude Code, Codex or OpenCode) with the `muster` CLI, or to list, read output from or stop one: \"start a Claude session in ../api to review the PR\", \"run this as a one-shot Codex task\", \"spin up an OpenCode session on the local model\", \"stop that muster session\". Also for choosing --level read/work/open, or a launch that timed out or was refused."
+description: "Use when asked to launch, start, spin up or muster an agent session or one-shot task (Claude Code, Codex or OpenCode) with the `muster` CLI, or to list, read output from or stop one: \"start a Claude session in ../api to review the PR\", \"run this as a one-shot Codex task\", \"spin up an OpenCode session on the local model\", \"stop that muster session\". Also for choosing --level read/work/open, a launch that timed out or was refused, or when muster's MCP tools are missing and wanted."
 ---
 
 # muster — launching agent sessions and tasks
@@ -109,6 +109,28 @@ To let a person look, give them `attach_hint` to run in a terminal they
 already have, or launch with `--open`. Closing that window leaves the session
 running.
 
+## muster's MCP tools in this session
+
+The CLI above always works. muster's MCP tools (`mcp__muster__*`) are an
+optional extra, registered per Claude profile:
+
+| Registered as | Tools |
+|---|---|
+| `muster mcp install` (the default) | `list`, `output` — read-only |
+| `muster mcp install --allow-launch` | also `run`, `stop`, `title` |
+
+If the tools are missing and the user wants them, **offer** to run
+`muster mcp install` and ask before running it. Run it without
+`--allow-launch` unless the user has said explicitly that they want this
+Claude to launch and stop sessions; wanting the tools is not that. Never add
+`--allow-launch` (or `--force` to switch an existing registration to it) on
+your own judgement. `muster mcp status` shows what is registered. Afterwards,
+tell the user to restart Claude Code (or start a new session): MCP servers load
+at session start, so the tools will not appear in this one.
+
+A `run` tool refused with "not enabled … read-only" means the registration is
+read-only. Use the CLI, or ask the user whether to grant launch.
+
 ## Traps (the short list)
 
 - **Untrusted directory → a Claude session times out** (~30 s,
@@ -137,9 +159,11 @@ local models, identities and running under another Claude config dir:
 
 ## Don't
 
-- Install `muster mcp` at user scope, or put a `muster mcp` server in
-  `default_mcp`. That hands launch authority to every session. If one agent
-  must orchestrate, give that one session `--mcp muster`.
+- Grant launch authority unasked: no `muster mcp install --allow-launch`
+  without the user's explicit say-so, and no `muster mcp --allow-launch`
+  server in `default_mcp`, which hands launch authority to every session
+  muster launches. If one agent must orchestrate, give that one session
+  `--mcp muster`.
 - Edit `~/.muster/config.toml` from an agent. muster never writes it, and a
   `work` launch cannot; config changes (allowed roots, providers,
   `allow_dangerous_flags`) are the operator's to make.
