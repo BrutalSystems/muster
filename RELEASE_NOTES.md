@@ -10,6 +10,21 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**A Claude session comes up in the profile's layout (#58).** Muster launches
+Claude with `--setting-sources ""`, which dropped the profile's `tui`
+setting, so on a profile set to `"tui": "fullscreen"` a watched muster session
+came up in the old inline layout. `tui` is now carried over from the
+profile's `settings.json`, the same way `enabledPlugins` and
+`extraKnownMarketplaces` are. It controls how the session is drawn, not what
+it may do.
+
+`statusLine` is **not** carried over. Claude Code runs no status line while
+`disableAllHooks` is true, and muster sets that on every launch, so a forwarded
+`statusLine` would never render. Showing the status line means letting hooks
+run in launched sessions, which is a separate decision.
+
 ## 1.2.1 — 2026-10-07
 
 **Security: a `work` launch can no longer write muster's own home (#44).** A

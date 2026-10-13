@@ -525,14 +525,21 @@ export function runtimeArgs(req: RunRequest): string[] {
   return result;
 }
 /**
- * The keys of a profile's own settings.json that name its skill set rather than
- * its policy. `--setting-sources ""` is what keeps `permissions`, `sandbox` and
- * `hooks` muster's alone — forwarding those would let a settings file re-widen
- * what `assertClaudePolicy` refuses to take on trust — so only these two are
- * carried across, and muster's keys are spread after them and win regardless.
+ * The keys of a profile's own settings.json that name its skill set or its
+ * layout rather than its policy. `--setting-sources ""` is what keeps
+ * `permissions`, `sandbox` and `hooks` muster's alone — forwarding those would
+ * let a settings file re-widen what `assertClaudePolicy` refuses to take on
+ * trust — so only these are carried across, and muster's keys are spread after
+ * them and win regardless. `tui` is how a watched session is drawn (#58).
+ * `statusLine` is deliberately absent: Claude Code runs no status line while
+ * `disableAllHooks` is true, so it would be inert until that changes.
  */
-const forwardedSettings = ["enabledPlugins", "extraKnownMarketplaces"] as const;
-function profilePluginSettings(configDir: string): Record<string, unknown> {
+const forwardedSettings = [
+  "enabledPlugins",
+  "extraKnownMarketplaces",
+  "tui",
+] as const;
+function profileForwardedSettings(configDir: string): Record<string, unknown> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(readFileSync(join(configDir, "settings.json"), "utf8"));
@@ -678,7 +685,7 @@ export function launchArgs(
   // write root ends up naming a directory nobody is launching in.
   const configDir = claudeConfigDir(env);
   const settings = {
-    ...profilePluginSettings(configDir),
+    ...profileForwardedSettings(configDir),
     disableAllHooks: true,
     // `--setting-sources ""` means an acceptance recorded in the profile's
     // settings.json is never read, so without this the bypass warning stops
