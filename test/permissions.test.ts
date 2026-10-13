@@ -148,6 +148,8 @@ const claudeSettings = (argv: string[]) =>
     disableAllHooks?: boolean;
     enabledPlugins?: unknown;
     extraKnownMarketplaces?: unknown;
+    tui?: unknown;
+    statusLine?: unknown;
     permissions: { allow: string[] };
     sandbox: {
       enabled: boolean;
@@ -294,6 +296,33 @@ test("the profile's plugins are forwarded, its policy is not", () => {
   expect(settings.sandbox.enabled).toBe(true);
 });
 
+/**
+ * `--setting-sources ""` also dropped the profile's `tui`, so a watched muster
+ * window on a profile set to "fullscreen" came up in the inline layout (#58).
+ * It names how the session is drawn, not what it may do, so it is forwarded.
+ * `statusLine` is not: Claude Code runs no status line while `disableAllHooks`
+ * is true, which muster sets on every launch (checked against 2.1.296), so
+ * forwarding it would change nothing.
+ */
+test("the profile's tui is forwarded, its statusLine is not", () => {
+  const dir = mkdtempSync(join(tmpdir(), "muster-cfg-"));
+  writeFileSync(
+    join(dir, "settings.json"),
+    JSON.stringify({
+      tui: "fullscreen",
+      statusLine: { type: "command", command: "echo status" },
+    }),
+  );
+  const settings = claudeSettings(
+    launchArgs(claudeReq("work"), defaults, [], undefined, {
+      CLAUDE_CONFIG_DIR: dir,
+    }),
+  );
+  expect(settings.tui).toBe("fullscreen");
+  expect(settings.statusLine).toBeUndefined();
+  expect(settings.disableAllHooks).toBe(true);
+});
+
 test("an absent or unreadable profile settings file forwards nothing", () => {
   const empty = mkdtempSync(join(tmpdir(), "muster-cfg-"));
   const broken = mkdtempSync(join(tmpdir(), "muster-cfg-"));
@@ -306,6 +335,7 @@ test("an absent or unreadable profile settings file forwards nothing", () => {
     );
     expect(settings.enabledPlugins).toBeUndefined();
     expect(settings.extraKnownMarketplaces).toBeUndefined();
+    expect(settings.tui).toBeUndefined();
     // Still a usable launch: the sandbox fix does not depend on the file.
     expect(settings.sandbox.filesystem.allowWrite).toEqual([dir]);
   }
