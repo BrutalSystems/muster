@@ -21,7 +21,7 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "prepack": "npm run build",
     "prepublishOnly": "npm test",
-    "version": "node scripts/stamp-release-notes.mjs && git add RELEASE_NOTES.md",
+    "version": "node scripts/stamp-release-notes.mjs && node scripts/stamp-plugin-version.mjs && git add RELEASE_NOTES.md plugins/claude-code/.claude-plugin/plugin.json",
     "postversion": "git push origin HEAD --follow-tags"
   },
   "dependencies": {
