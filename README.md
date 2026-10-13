@@ -114,6 +114,22 @@ What that verification covers is in [Verification](docs/verification.md).
 | [MCP servers and plugins](docs/mcp.md)               | tools for launched agents, and Muster's own MCP server |
 | [Verification](docs/verification.md)                 | what is tested, what is checked by hand                |
 
+## Claude Code plugin
+
+The repository ships a Claude Code plugin whose `muster` skill teaches a Claude
+session to use Muster well: choosing a kind and level, reaching and stopping
+what it launched, and the traps. It is versioned with Muster, so it describes
+the release it came from.
+
+```sh
+claude plugin marketplace add BrutalSystems/muster
+claude plugin install muster@muster
+```
+
+Or, inside a session, `/plugin marketplace add BrutalSystems/muster` and then
+`/plugin install muster@muster`. The plugin adds a skill only; it does not
+register Muster's MCP server (see [MCP installation](docs/mcp.md#mcp-installation)).
+
 ## Keeping it up to date
 
 Publishing a release does not touch an installed copy: `muster --version` keeps

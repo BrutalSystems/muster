@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "muster",
+  "description": "The Claude Code plugin for muster, shipped from the muster repository.",
+  "owner": {
+    "name": "BrutalSystems"
+  },
+  "plugins": [
+    {
+      "name": "muster",
+      "description": "Teaches Claude Code to launch, reach and stop Claude Code, Codex and OpenCode sessions and tasks with the muster CLI, under the containment it chooses.",
+      "source": "./plugins/claude-code",
+      "category": "development"
+    }
+  ]
+}

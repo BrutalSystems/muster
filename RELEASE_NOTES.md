@@ -10,6 +10,16 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**A Claude Code plugin ships with the repository.** Its `muster` skill teaches
+a Claude session to launch, reach and stop sessions and tasks well: choosing a
+kind and level, what a launch keeps from the profile, workspace trust, and the
+known traps. Install it with `claude plugin marketplace add
+BrutalSystems/muster` and `claude plugin install muster@muster`. The plugin's
+version is stamped from `package.json` by `npm version`, so the skill always
+names the release it describes.
+
 ## 1.2.2 — 2026-10-13
 
 **A Claude session comes up in the profile's layout (#58).** Muster launches
