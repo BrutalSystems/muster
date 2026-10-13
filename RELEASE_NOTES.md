@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 1.2.2 — 2026-10-13
 
 **A Claude session comes up in the profile's layout (#58).** Muster launches
 Claude with `--setting-sources ""`, which dropped the profile's `tui`
