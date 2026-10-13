@@ -107,9 +107,10 @@ test("bare muster at a terminal prints usage and exits instead of waiting", asyn
 /**
  * The other half, and the reason the branch is on the TTY rather than on the
  * argument list: `muster` with no arguments is a documented way to start the
- * server, and an MCP client reaches it down a pipe. This pins that.
+ * server, and an MCP client reaches it down a pipe. This pins that — and that
+ * it is the same read-only server `muster mcp` starts, not a launch grant.
  */
-test("bare muster down a pipe still serves MCP", async () => {
+test("bare muster down a pipe still serves MCP, read-only", async () => {
   const f = await fixture();
   const client = new Client({ name: "muster-test", version: "1" });
   await client.connect(
@@ -121,9 +122,10 @@ test("bare muster down a pipe still serves MCP", async () => {
     }),
   );
   try {
-    expect((await client.listTools()).tools.map((t) => t.name)).toContain(
-      "run",
-    );
+    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual([
+      "list",
+      "output",
+    ]);
   } finally {
     await client.close();
   }

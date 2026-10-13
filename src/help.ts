@@ -198,13 +198,22 @@ export const COMMANDS: Command[] = [
   },
   {
     name: "mcp",
-    summary: "start the MCP server on stdio",
-    synopsis: "muster mcp",
-    options: [],
-    notes: [
-      "Exposes run, list, stop and output. No arguments does the same when stdin is not a terminal, which is what an MCP client provides.",
+    summary: "serve MCP on stdio, or register it with Claude Code",
+    synopsis: "muster mcp [--allow-launch] | mcp install|uninstall|status",
+    options: [
+      ["--allow-launch", "also expose run, stop and title (launch authority)"],
+      ["--force", "install: replace a different existing registration"],
     ],
-    examples: ["muster mcp"],
+    notes: [
+      "Read-only by default: exposes list and output only. --allow-launch is the deliberate grant. No arguments starts the read-only server when stdin is not a terminal, which is what an MCP client provides.",
+      "install registers the server with Claude Code at user scope for the current profile (CLAUDE_CONFIG_DIR) via `claude mcp add`. Without --allow-launch it asks at a terminal, defaulting to no; without a terminal it does not grant. Restart Claude Code afterwards.",
+    ],
+    examples: [
+      "muster mcp",
+      "muster mcp install",
+      "muster mcp install --allow-launch --force",
+      "muster mcp status",
+    ],
   },
 ];
 export function topLevelHelp(): string {
@@ -227,7 +236,7 @@ export function topLevelHelp(): string {
     // about who gets launch authority, not reference detail, and it is only
     // load-bearing where someone is about to install.
     ...wrap(
-      "MCP: install deliberately in the one authorized session, never at user scope.",
+      "MCP: `muster mcp install` registers a read-only server with Claude Code. Launch authority is granted only by --allow-launch.",
       WIDTH,
     ),
   ];

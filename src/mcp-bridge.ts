@@ -10,7 +10,7 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
-import { mcpServerSchema, mcpName, mcpTransport } from "./mcp.js";
+import { mcpServerSchema, mcpName, mcpTransport, toolGate } from "./mcp.js";
 
 async function main() {
   const [path, name] = process.argv.slice(2);
@@ -18,6 +18,7 @@ async function main() {
     throw new Error("Invalid MCP bridge arguments");
   const definitions = JSON.parse(await readFile(path, "utf8"));
   const config = mcpServerSchema.parse(definitions[name]);
+  const gate = toolGate(config.tools);
   const client = new Client(
     { name: "muster-tool-bridge", version: "1" },
     { capabilities: {} },
@@ -73,13 +74,13 @@ async function main() {
     let cursor: string | undefined;
     do {
       const page = await client.listTools(cursor ? { cursor } : {});
-      tools.push(...page.tools.filter((t) => config.tools.includes(t.name)));
+      tools.push(...gate.expose(page.tools));
       cursor = page.nextCursor;
     } while (cursor);
     return { tools };
   });
   server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
-    if (!config.tools.includes(params.name))
+    if (!gate.allows(params.name))
       return {
         isError: true,
         content: [

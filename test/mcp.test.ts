@@ -447,6 +447,65 @@ test("Claude MCP bridge exposes only selected tools and rejects unlisted calls",
   }
 });
 
+/**
+ * The same gate on Muster's own server. Registering it where every Claude
+ * session sees it is only safe because the default exposes nothing that can
+ * start, stop or change a run — and a client can call a tool it was never
+ * shown, so the call side is checked, not just the listing.
+ */
+test("Muster's own MCP server is read-only by default and rejects launch calls", async () => {
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StdioClientTransport } =
+    await import("@modelcontextprotocol/sdk/client/stdio.js");
+  const f = await fixture();
+  const connect = async (args: string[]) => {
+    const client = new Client({ name: "gate-test", version: "1" });
+    await client.connect(
+      new StdioClientTransport({
+        command: process.execPath,
+        args: [join(process.cwd(), "dist/muster.js"), ...args],
+        env: f.env,
+        stderr: "pipe",
+      }),
+    );
+    return client;
+  };
+  const readOnly = await connect(["mcp"]);
+  try {
+    expect(
+      (await readOnly.listTools()).tools.map((t) => t.name).sort(),
+    ).toEqual(["list", "output"]);
+    expect(
+      await readOnly.callTool({ name: "list", arguments: {} }),
+    ).not.toMatchObject({ isError: true });
+    const refused = await readOnly.callTool({
+      name: "run",
+      arguments: { runtime: "claude", prompt: "should not start", cwd: f.root },
+    });
+    expect(refused).toMatchObject({ isError: true });
+    expect((refused.content as any)[0].text).toContain("--allow-launch");
+    for (const name of ["stop", "title", "newly_advertised_tool"])
+      expect(
+        await readOnly.callTool({
+          name,
+          arguments: { id: "x", title: "x" },
+        }),
+      ).toMatchObject({ isError: true });
+    // Nothing was launched: the fake runtime records every start.
+    expect(await lines(join(f.root, "starts.jsonl"))).toEqual([]);
+  } finally {
+    await readOnly.close();
+  }
+  const granted = await connect(["mcp", "--allow-launch"]);
+  try {
+    expect((await granted.listTools()).tools.map((t) => t.name).sort()).toEqual(
+      ["list", "output", "run", "stop", "title"],
+    );
+  } finally {
+    await granted.close();
+  }
+}, 20000);
+
 test("MCP bridge exits promptly on parent stdin EOF without a kill signal", async () => {
   const { spawn } = await import("node:child_process");
   const f = await fixture();
