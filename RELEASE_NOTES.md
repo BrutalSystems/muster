@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 2.0.0 — 2026-10-13
 
 **Breaking: `muster mcp` is now read-only by default.** Bare `muster mcp` —
 and bare `muster` with stdin not a terminal, which is the same server — now
