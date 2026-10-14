@@ -74,15 +74,27 @@ export const COMMANDS: Command[] = [
         "deprecated, removed in v2: pass the app to --open instead",
       ],
       [
-        "--level LEVEL",
-        "read, work, or open: a legal permissions and sandbox pair; work writes the launch folder except muster's own home",
+        "--read-only",
+        "sealed: muster's own settings replace the profile's, and the agent can change nothing",
       ],
-      ["--permissions MODE", "auto, deny, or bypass"],
-      ["--sandbox MODE", "read-only, workspace-write, or full-access"],
+      [
+        "--write-here",
+        "sealed: muster's own settings replace the profile's, and the agent can write only inside the launch folder, never muster's own home",
+      ],
+      [
+        "--unrestricted",
+        "no sandbox and no permission checks; needs allow_dangerous_flags in config.toml",
+      ],
+      [
+        "--level LEVEL",
+        "older spelling: read, work or open are the three flags above; normal is the claude default",
+      ],
+      ["--permissions MODE", "auto, deny, or bypass (sealed)"],
+      ["--sandbox MODE", "read-only, workspace-write, or full-access (sealed)"],
       ["--mcp NAME", "repeatable; replaces configured defaults"],
       [
         "--options NAME",
-        "repeatable; muster-side launch options — auto-approve-path records the launch directory as trusted so its one-time dialog does not block the launch (claude and codex only, and refused if the directory ships hooks or MCP servers); accept-bypass-warning accepts Claude's one-time Bypass Permissions warning so a --level open launch can start (claude with bypass permissions only)",
+        "repeatable; muster-side launch options — auto-approve-path records the launch directory as trusted so its one-time dialog does not block the launch (claude and codex only, and refused if the directory ships hooks or MCP servers); accept-bypass-warning accepts Claude's one-time Bypass Permissions warning so an --unrestricted launch can start (claude with bypass permissions only)",
       ],
       ["--no-mcp", "launch with no MCP servers"],
       ["--plugin NAME", "repeatable; replaces configured defaults (OpenCode)"],
@@ -111,12 +123,15 @@ export const COMMANDS: Command[] = [
       ["-- RUNTIME_OPTIONS", "everything after -- is passed to the runtime"],
     ],
     notes: [
-      "Naming both --level and --permissions or --sandbox is an error rather than a precedence rule.",
+      "With none of --read-only, --write-here or --unrestricted, claude opens exactly as you would open it by hand in that folder: your profile's rules, CLAUDE.md, permissions, hooks, plugins, MCP servers and env. Muster refuses only a profile whose default mode is bypass. codex and opencode stay read-only by default.",
+      "A sealed launch does not read your profile's or the project's settings, so it also loads no rules or CLAUDE.md.",
+      "Use one of the three flags, --level, or --permissions/--sandbox; naming two is an error rather than a precedence rule.",
       "A pty launch keeps this process running and Ctrl-C stops it; a tmux launch survives this process exiting.",
     ],
     examples: [
       "muster run claude --prompt 'Review this project' --cwd .",
-      "muster run codex --identity work --level work --prompt 'Ship it'",
+      "muster run claude --read-only --prompt 'Audit this' --cwd .",
+      "muster run codex --identity work --write-here --prompt 'Ship it'",
     ],
   },
   {

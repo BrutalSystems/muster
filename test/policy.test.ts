@@ -96,8 +96,13 @@ test("prompt is mandatory and cannot be interpreted as a flag or shell program",
   );
   expect(args.slice(-2)).toEqual(["--", prompt]);
   expect(args).toContain("read-only");
+  const normal = launchArgs(
+    runSchema.parse({ runtime: "claude", prompt }),
+    config,
+  );
+  expect(normal.slice(-2)).toEqual(["--", prompt]);
   const claude = launchArgs(
-    runSchema.parse({ runtime: "claude", prompt: "hi" }),
+    runSchema.parse({ runtime: "claude", prompt: "hi", level: "read" }),
     config,
   );
   expect(claude).not.toContain("--dangerously-skip-permissions");

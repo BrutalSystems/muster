@@ -16,7 +16,7 @@ const remote: RequesterId = {
 };
 const enrolled = configSchema.parse({
   requester_profiles: {
-    research: { allowed_roots: ["/tmp"] },
+    research: { allowed_roots: ["/tmp"], level: "read" },
     wide: {
       allowed_roots: ["/tmp"],
       level: "work",

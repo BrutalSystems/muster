@@ -272,3 +272,22 @@ test("--title is refused outside run rather than ignored", async () => {
     run(process.execPath, [cli, "list", "--title", "x"], { env: f.env }),
   ).rejects.toThrow(/--title applies only to run/);
 }, 20000);
+
+test("the sealed-level flags are exclusive with each other and with --level", async () => {
+  const f = await fixture();
+  const run = (args: string[]) =>
+    promisify(execFile)(process.execPath, [cli, ...args], { env: f.env });
+  const base = ["run", "claude", "--prompt", "x"];
+  await expect(run([...base, "--read-only", "--write-here"])).rejects.toThrow(
+    /not several/,
+  );
+  await expect(
+    run([...base, "--unrestricted", "--level", "open"]),
+  ).rejects.toThrow(/or --level, not both/);
+  await expect(
+    run([...base, "--write-here", "--sandbox", "workspace-write"]),
+  ).rejects.toThrow(/level or permissions\/sandbox/);
+  await expect(run(["list", "--read-only"])).rejects.toThrow(
+    /applies only to run/,
+  );
+}, 20000);

@@ -92,9 +92,15 @@ function recordHuman(record: RecordView, color: boolean): string {
   if (record.title) lines.push(field("Title", clean(record.title)));
   lines.push(field("Directory", clean(record.cwd)));
   if (record.identity) lines.push(field("Identity", clean(record.identity)));
-  if (record.permissions)
-    lines.push(field("Permissions", clean(record.permissions)));
-  if (record.sandbox) lines.push(field("Sandbox", clean(record.sandbox)));
+  // A normal launch has no permissions or sandbox of muster's to report; one
+  // line saying whose settings apply reads better than "normal" twice.
+  if (record.permissions === "normal")
+    lines.push(field("Settings", "the profile's own, as if opened by hand"));
+  else {
+    if (record.permissions)
+      lines.push(field("Permissions", clean(record.permissions)));
+    if (record.sandbox) lines.push(field("Sandbox", clean(record.sandbox)));
+  }
   // Only when known: a null means the child chose its own model, and "-" in a
   // human listing would read as a value rather than an absence. The source is
   // shown because "pinned by the caller" and "fell back to the configured

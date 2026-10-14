@@ -45,13 +45,13 @@ export type ResolvedRequesterPolicy = {
   /** Absent for a local requester, which has no profile and no ceiling. */
   profile: RequesterProfile | undefined;
   level: Level | undefined;
-  minEnforcement: "kernel" | "tool-policy" | undefined;
+  minEnforcement: Enforcement | undefined;
   logMode: "full" | "metadata";
   /** Absent for a local requester, which has no profile and no ceiling. */
   identities: string[] | undefined;
 };
 /** Ordered weakest to strongest, so a ceiling is one index comparison. */
-const LEVEL_ORDER: Level[] = ["read", "work", "open"];
+const LEVEL_ORDER: Level[] = ["read", "work", "normal", "open"];
 const GRADE_ORDER: Enforcement[] = ["none", "tool-policy", "kernel"];
 export function resolveRequesterPolicy(
   requester: RequesterId,

@@ -1,8 +1,12 @@
 import { expect, test } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { configSchema } from "../src/config.js";
 import {
   LEVELS,
   assertLevelExclusive,
+  assertNoDefaultBypass,
   resolvePermissions,
   normalizeOpenFlag,
   resolveTerminal,
@@ -32,6 +36,17 @@ const req = (extra: Record<string, unknown>) =>
 test("each level resolves to exactly the pair it spells", () => {
   for (const [level, pair] of Object.entries(LEVELS)) {
     const config = level === "open" ? unmatchedDangerous : unmatched;
+    // normal has no permissions/sandbox spelling and no codex launch; it is
+    // pinned by the tests that follow.
+    if (level === "normal") {
+      expect(
+        resolvePermissions(
+          runSchema.parse({ runtime: "claude", prompt: "hello", level }),
+          config,
+        ),
+      ).toEqual(pair);
+      continue;
+    }
     expect(resolvePermissions(req({ level }), config)).toEqual(pair);
     expect(resolvePermissions(req(pair), config)).toEqual(
       resolvePermissions(req({ level }), config),
@@ -167,5 +182,56 @@ test("a typed --terminal is deprecated, but the one --open lifts is not", () => 
   // deprecate.
   expect(usesTerminalFlag(["run", "claude", "--", "--terminal", "x"])).toBe(
     false,
+  );
+});
+
+test("a claude launch naming nothing is normal; other runtimes stay sealed", () => {
+  const defaults = configSchema.parse({});
+  const plain = (runtime: string) =>
+    resolvePermissions(runSchema.parse({ runtime, prompt: "hello" }), defaults);
+  expect(plain("claude")).toEqual(LEVELS.normal);
+  expect(plain("codex")).toEqual(LEVELS.read);
+  expect(plain("opencode")).toEqual(LEVELS.read);
+});
+
+test("a configured default is the operator's choice and keeps claude sealed", () => {
+  const sealed = configSchema.parse({ permissions: "deny" });
+  expect(
+    resolvePermissions(
+      runSchema.parse({ runtime: "claude", prompt: "hello" }),
+      sealed,
+    ),
+  ).toEqual(LEVELS.read);
+});
+
+test("normal is refused by name for a runtime that has no normal launch", () => {
+  expect(() =>
+    resolvePermissions(
+      runSchema.parse({ runtime: "codex", prompt: "hello", level: "normal" }),
+      configSchema.parse({}),
+    ),
+  ).toThrow(/claude only.*--read-only/);
+});
+
+test("a normal launch whose settings default to bypass is refused", () => {
+  const profile = mkdtempSync(join(tmpdir(), "mu-profile-"));
+  const cwd = mkdtempSync(join(tmpdir(), "mu-cwd-"));
+  const bypass = JSON.stringify({
+    permissions: { defaultMode: "bypassPermissions" },
+  });
+  expect(() => assertNoDefaultBypass(profile, cwd)).not.toThrow();
+  writeFileSync(join(profile, "settings.json"), bypass);
+  expect(() => assertNoDefaultBypass(profile, cwd)).toThrow(/--unrestricted/);
+  // A higher-precedence source that names another mode wins, as in Claude.
+  mkdirSync(join(cwd, ".claude"));
+  writeFileSync(
+    join(cwd, ".claude", "settings.local.json"),
+    JSON.stringify({ permissions: { defaultMode: "auto" } }),
+  );
+  expect(() => assertNoDefaultBypass(profile, cwd)).not.toThrow();
+  writeFileSync(join(cwd, ".claude", "settings.local.json"), bypass);
+  writeFileSync(join(profile, "settings.json"), "{}");
+  expect(() => assertNoDefaultBypass(profile, cwd)).toThrow(
+    /settings\.local\.json/,
   );
 });

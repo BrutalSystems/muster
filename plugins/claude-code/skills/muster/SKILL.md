@@ -1,6 +1,6 @@
 ---
 name: muster
-description: "Use when asked to launch, start, spin up or muster an agent session or one-shot task (Claude Code, Codex or OpenCode) with the `muster` CLI, or to list, read output from or stop one: \"start a Claude session in ../api to review the PR\", \"run this as a one-shot Codex task\", \"spin up an OpenCode session on the local model\", \"stop that muster session\". Also for choosing --level read/work/open, a launch that timed out or was refused, or when muster's MCP tools are missing and wanted."
+description: "Use when asked to launch, start, spin up or muster an agent session or one-shot task (Claude Code, Codex or OpenCode) with the `muster` CLI, or to list, read output from or stop one: \"start a Claude session in ../api to review the PR\", \"run this as a one-shot Codex task\", \"spin up an OpenCode session on the local model\", \"stop that muster session\". Also for choosing a normal launch or --read-only/--write-here/--unrestricted, a launch that timed out or was refused, or when muster's MCP tools are missing and wanted."
 ---
 
 # muster — launching agent sessions and tasks
@@ -10,17 +10,14 @@ you choose, waits until it is actually reachable, and returns JSON describing
 it. Use it instead of assembling `claude …` in a terminal yourself: the
 launch is tracked (`list`), stoppable (`stop`) and recorded.
 
-This skill matches **muster 1.2.2**. Check `muster --version`; if it differs,
+This skill matches **muster 3.0.0**. Check `muster --version`; if it differs,
 trust `muster <command> --help` over this file.
 
 **Not for:**
 - **Messaging a running session.** That is Tin Can (`send_peer`); muster only
   hands you the address.
 - **Watching sessions** for stalls or questions. That is birddog.
-- **A session a person will sit in and use as their own.** muster replaces the
-  profile's settings (see *What a launch keeps*), so it has no status line,
-  hooks or settings `env`. Start `claude` normally for that.
-- **Getting round a refusal in your own session.** Launching a `--level open`
+- **Getting round a refusal in your own session.** Launching an `--unrestricted`
   task to run what your own permissions refused is evasion, not a fix. Report
   the refusal instead.
 
@@ -30,17 +27,22 @@ trust `muster <command> --help` over this file.
 |---|---|---|
 | Runtime | `claude` | the request names `codex` or `opencode` |
 | `--kind` | `session` | `task` for one job that runs headless, exits and leaves output. A task has no peer address and no MCP servers unless you pass `--mcp` |
-| `--level` | config default (`deny` + `read-only` unless the operator changed it) | `read` to look, `work` to edit the working tree, `open` only when explicitly asked. Always pass one |
+| Containment | claude: **normal**, exactly as a person would open it in that profile and folder. codex/opencode: read-only | `--read-only` or `--write-here` when you need muster's guarantee rather than the profile's settings; `--unrestricted` only when explicitly asked |
 | `--cwd` | the caller's cwd | the repo the work is in. It is all a Claude session can see |
 | `--prompt` | required, non-blank | always the actual instruction, so the agent self-starts |
 
-Levels are named pairs of `--permissions` and `--sandbox`:
+A **normal** Claude launch loads the profile's rules, CLAUDE.md, permissions,
+hooks, status line, plugins, MCP servers and `env`, just like `claude` typed by
+hand. Muster refuses it only when the profile defaults to bypass.
 
-| Level | Asks before acting | May write | Notes |
+The three flags **seal** the launch instead. Muster's own settings replace the
+profile's, so the agent gets **no rules or CLAUDE.md**:
+
+| Flag (`--level`) | Asks before acting | May write | Notes |
 |---|---|---|---|
-| `read` | yes (`deny`) | nothing | Bash works, writes refused |
-| `work` | no (`auto`) | its cwd, `$TMPDIR`, its own config dir — never `~/.muster` | Bash is fenced to the tree; Claude's Write tool is not |
-| `open` | no (`bypass`) | everything | needs `allow_dangerous_flags = true` in config; Claude also needs `--options accept-bypass-warning` |
+| `--read-only` (`read`) | yes (`deny`) | nothing | Bash works, writes refused |
+| `--write-here` (`work`) | no (`auto`) | its cwd, `$TMPDIR`, its own config dir — never `~/.muster` | Bash is fenced to the tree; Claude's Write tool is not |
+| `--unrestricted` (`open`) | no (`bypass`) | everything | needs `allow_dangerous_flags = true` in config; Claude also needs `--options accept-bypass-warning` |
 
 Details, and what each level does not stop: [containment.md](containment.md).
 
@@ -48,11 +50,11 @@ Details, and what each level does not stop: [containment.md](containment.md).
 
 ```sh
 # A session you will drive (Claude needs the dir trusted, or the option below)
-muster run claude --cwd ~/src/api --level work \
+muster run claude --cwd ~/src/api \
   --options auto-approve-path --prompt "Review the open PR and report findings"
 
 # A one-shot task: runs headless, exits, keeps its output
-muster run codex --kind task --cwd ~/src/api --level read \
+muster run codex --kind task --cwd ~/src/api --read-only \
   --prompt "Run the test suite and paste the raw failures"
 muster list --kind task            # state running -> exited, with exit_code
 muster output <task-id>            # the captured output: the only way back from a task
@@ -69,7 +71,8 @@ opencode), `--mcp NAME` (repeatable, replaces `default_mcp`), `--no-mcp`,
 `--format human`. Runtime flags go after `--`, and only an allowlist passes
 (`--model`/`-m`; Claude's `--effort`; OpenCode's `--agent`, `--variant`).
 
-Refused rather than resolved: `--level` with `--permissions` or `--sandbox`;
+Refused rather than resolved: two of `--read-only`/`--write-here`/`--unrestricted`, `--level`
+and `--permissions`/`--sandbox`;
 `--project` with `--cwd`; `--mcp` with `--no-mcp`; a model given both as
 `--model` and after `--`; a bare-number duration (`30` — write `30s`/`30m`/`4h`).
 

@@ -10,6 +10,52 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**Breaking: a Claude launch now opens exactly as you would open it by hand.**
+`muster run claude` with no containment flag starts `claude` in that profile
+and folder with nothing of muster's added or taken away. It loads:
+- user, project and local settings;
+- the profile's rules and CLAUDE.md;
+- the `env` and `autoMode` blocks;
+- its allow, ask and deny rules and `additionalDirectories`;
+- hooks and the status line;
+- plugins;
+- the profile's own MCP servers.
+
+Until now every Claude launch passed `--setting-sources ""`. That flag also
+stopped all instruction loading, so a muster session ran without your rules or
+the repo's CLAUDE.md.
+- **What muster still refuses:** a profile or project whose
+  `permissions.defaultMode` is `bypassPermissions`. Pass `--unrestricted` to
+  ask for bypass.
+- **MCP:** `default_mcp` is not added to a normal launch, since the profile
+  brings its own. `--mcp NAME` still adds a server beside them.
+- **Records:** a normal launch shows `permissions: normal`, `sandbox: normal`
+  and `enforcement: none`.
+- **Managed policy:** not refused for a normal launch, which obeys it as a hand
+  launch does.
+
+This applies only when neither `permissions` nor `sandbox` is set in
+`config.toml`. A config that sets either keeps its explicit default. Codex and
+OpenCode are unchanged and stay read-only by default.
+
+**New flags for a sealed launch: `--read-only`, `--write-here`,
+`--unrestricted`.** They are the plain spellings of `--level read`, `work` and
+`open`, which keep working. A sealed launch runs on muster's own settings in
+place of the profile's, as before, so it loads no rules or CLAUDE.md. Use one
+when you need muster's guarantee rather than the profile's settings. Naming two
+of them, or one alongside `--level` or `--permissions`/`--sandbox`, is refused.
+
+**Breaking: an enrolled remote requester gets a normal launch by default.** A
+`[requester_profiles.*]` entry with no `level` now means `normal`, with
+`min_enforcement` defaulting to `none`, so a remote Claude launch matches a
+local one. A Codex or OpenCode request under that default gets `read`. Write
+`level = "read"` or `"work"` to cap a requester as before. A `normal` profile
+that names a stricter `min_enforcement` is refused at load.
+
+The MCP `run` tool accepts `level: "normal"`.
+
 ## 2.0.0 — 2026-10-13
 
 **Breaking: `muster mcp` is now read-only by default.** Bare `muster mcp` —

@@ -250,6 +250,9 @@ async function main() {
         permissions: { type: "string" },
         sandbox: { type: "string" },
         level: { type: "string" },
+        "read-only": { type: "boolean" },
+        "write-here": { type: "boolean" },
+        unrestricted: { type: "boolean" },
         mcp: { type: "string", multiple: true },
         options: { type: "string", multiple: true },
         "no-mcp": { type: "boolean" },
@@ -279,8 +282,30 @@ async function main() {
       socket,
       home: homeFlag,
       "stop-now": stopNow,
+      "read-only": readOnly,
+      "write-here": writeHere,
+      unrestricted,
       ...values
     } = parsed;
+    // The plain spellings of the three sealed levels. Each is a level, so the
+    // existing exclusivity with --permissions/--sandbox applies unchanged once
+    // it is folded into `values.level`.
+    const levelFlags = (
+      [
+        ["--read-only", readOnly, "read"],
+        ["--write-here", writeHere, "work"],
+        ["--unrestricted", unrestricted, "open"],
+      ] as const
+    ).filter(([, set]) => set);
+    if (levelFlags.length && command !== "run")
+      throw new Error(`${levelFlags[0]![0]} applies only to run`);
+    if (levelFlags.length > 1)
+      throw new Error(
+        `use one of ${levelFlags.map(([name]) => name).join(", ")}, not several`,
+      );
+    if (levelFlags.length && values.level !== undefined)
+      throw new Error(`use ${levelFlags[0]![0]} or --level, not both`);
+    if (levelFlags.length) values.level = levelFlags[0]![2];
     // Guarded like --request-key and --no-mcp below: a flag that applies to one
     // command and is silently ignored elsewhere misleads, and --home silently
     // reading the real registry is the one that would mislead most.

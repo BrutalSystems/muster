@@ -64,10 +64,10 @@ models; behaviour against real ones is verified by hand and recorded in
 npm install -g --allow-scripts=@brutalsystems/muster,node-pty @brutalsystems/muster
 
 # A session: an agent you can reach, addressed once it is genuinely alive.
-muster run claude --prompt 'Review this project' --cwd . --level work
+muster run claude --prompt 'Review this project' --cwd .
 
 # A task: runs once, captures output, advertises nothing.
-muster run codex --kind task --prompt 'Summarise the failing tests' --level read
+muster run codex --kind task --prompt 'Summarise the failing tests' --read-only
 muster output <id>
 
 # What is running, and stopping it.
@@ -75,15 +75,26 @@ muster list --format human
 muster stop <id>
 ```
 
-`--level` names a containment pair. `read` can look but not change; `work` can
-edit its working directory, except muster's own home (`~/.muster`); `open`
-removes the sandbox and needs `allow_dangerous_flags` in config.
+**A Claude launch with no containment flag opens exactly as you would open it
+by hand** in that profile and folder. It gets your rules and CLAUDE.md, your
+permissions, hooks, status line, plugins, MCP servers and settings `env`.
+Muster adds nothing and replaces nothing. The one thing it refuses is a profile
+whose default permission mode is bypass. Codex and OpenCode stay read-only by
+default.
 
-| Level  | The agent asks before acting | What it may touch           |
-| ------ | ---------------------------- | --------------------------- |
-| `read` | always                       | nothing on disk             |
-| `work` | no                           | its cwd, except `~/.muster` |
-| `open` | no                           | everything                  |
+When you want muster's guarantee instead, **seal** the launch. A sealed launch
+runs on muster's own settings in place of the profile's, so it loads no rules
+or CLAUDE.md:
+
+| Flag             | The agent asks before acting | What it may touch           |
+| ---------------- | ---------------------------- | --------------------------- |
+| `--read-only`    | always                       | nothing on disk             |
+| `--write-here`   | no                           | its cwd, except `~/.muster` |
+| `--unrestricted` | no                           | everything                  |
+
+`--unrestricted` removes the sandbox and needs `allow_dangerous_flags` in
+config. `--level read|work|open` is the older spelling of the same three and
+still works.
 
 Claude asks to trust a directory the first time. That is a one-time review you
 do yourself — or `--options auto-approve-path`, which records it for you after

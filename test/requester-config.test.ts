@@ -2,11 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import {
-  configSchema,
-  loadConfig,
-  unknownConfigKeys,
-} from "../src/config.js";
+import { configSchema, loadConfig, unknownConfigKeys } from "../src/config.js";
 import { RequesterConfigError } from "../src/requester-policy.js";
 
 async function config(toml: string) {
@@ -26,16 +22,27 @@ test("both sections default to empty, so nothing changes unconfigured", () => {
   expect(parsed.requesters).toEqual([]);
 });
 
-test("a profile defaults to the most restrictive settings", async () => {
+test("a profile defaults to a normal launch, the operator's own", async () => {
   const c = await config(profile);
   expect(c.requester_profiles.research).toEqual({
     allowed_roots: ["/tmp"],
-    level: "read",
-    min_enforcement: "kernel",
+    level: "normal",
+    min_enforcement: "none",
     env_allow: [],
     env_defaults: {},
     identities: [],
   });
+});
+
+test("a capped profile keeps the kernel floor unless it names one", async () => {
+  const c = await config(`${profile}level = "read"\n`);
+  expect(c.requester_profiles.research?.min_enforcement).toBe("kernel");
+});
+
+test("a normal profile with a stricter enforcement floor is a config error", async () => {
+  await expect(
+    config(`${profile}min_enforcement = "kernel"\n`),
+  ).rejects.toThrow(/set min_enforcement/);
 });
 
 test("allowed_roots is required and must be non-empty", async () => {
@@ -122,9 +129,9 @@ terminal_from_the_future = "ghostty"
 some_other_new_key = true
 `);
   expect(parsed.max_concurrent).toBe(7);
-  expect(unknownConfigKeys({ max_concurrent: 7, terminal_from_the_future: "x" })).toEqual([
-    "terminal_from_the_future",
-  ]);
+  expect(
+    unknownConfigKeys({ max_concurrent: 7, terminal_from_the_future: "x" }),
+  ).toEqual(["terminal_from_the_future"]);
   expect(unknownConfigKeys({ max_concurrent: 7 })).toEqual([]);
 });
 
