@@ -10,8 +10,13 @@ import { identityNameSchema } from "./identity-store.js";
 import { authoritySchema, subjectSchema } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
 /**
- * What a remote requester is permitted here. Every default is the narrowest
- * value, so the shortest profile is the most restrictive one.
+ * What a remote requester is permitted here.
+ *
+ * `level` defaults to `normal`: an enrolled remote caller gets a launch like
+ * the operator's own, as a local one does (Mike, 2026-10-14). Naming `read` or
+ * `work` is how a profile caps it. `min_enforcement` follows the level it is
+ * written beside — `none` for a normal profile, which muster does not enforce,
+ * and `kernel` for a capped one — unless the profile names it.
  *
  * `allowed_roots` is the one key with no safe default: the global
  * `allowed_roots` defaults to empty, which `assertAllowedWorkspace` reads as
@@ -29,8 +34,8 @@ import { RequesterConfigError } from "./requester-policy.js";
 export const requesterProfileSchema = z
   .object({
     allowed_roots: z.array(z.string().min(1)).min(1),
-    level: z.enum(["read", "work"]).default("read"),
-    min_enforcement: z.enum(["kernel", "tool-policy"]).default("kernel"),
+    level: z.enum(["read", "work", "normal"]).default("normal"),
+    min_enforcement: z.enum(["kernel", "tool-policy", "none"]).optional(),
     env_allow: z.array(z.string().min(1)).default([]),
     /**
      * Baseline overrides, e.g. a PATH that does not depend on the accepting
@@ -42,7 +47,20 @@ export const requesterProfileSchema = z
     /** Which identities this requester may launch under. Empty refuses any. */
     identities: z.array(identityNameSchema).default([]),
   })
-  .strict();
+  .strict()
+  .transform((p) => ({
+    ...p,
+    min_enforcement:
+      p.min_enforcement ?? (p.level === "normal" ? "none" : "kernel"),
+  }))
+  // A normal launch is the profile's own settings with nothing of muster's on
+  // top, so its enforcement grade is `none`. A profile that grants it and keeps
+  // a stricter floor would refuse every launch at its own default level, which
+  // is a configuration error worth reporting at load rather than at launch.
+  .refine((p) => p.level !== "normal" || p.min_enforcement === "none", {
+    message:
+      'level = "normal" hands the launch to the agent\'s own settings, which muster does not enforce; set min_enforcement = "none" alongside it',
+  });
 export type RequesterProfile = z.infer<typeof requesterProfileSchema>;
 /** Binding an authenticated `(authority, subject)` to a profile. The grant. */
 export const requesterEnrolmentSchema = z
@@ -92,7 +110,10 @@ export const configSchema = z
     projects: z
       .record(z.string().regex(/^[a-zA-Z0-9_-]+$/), z.string().min(1))
       .default({}),
-    permissions: z.enum(["auto", "deny", "bypass"]).default("deny"),
+    // No defaults: naming neither is how a Claude launch knows to open as a
+    // person would open it. `resolvePermissions` supplies deny/read-only for
+    // everything else.
+    permissions: z.enum(["auto", "deny", "bypass"]).optional(),
     sandbox: z
       .enum([
         "read-only",
@@ -100,7 +121,7 @@ export const configSchema = z
         "full-access",
         "danger-full-access",
       ])
-      .default("read-only"),
+      .optional(),
     default_mcp: z.array(mcpName).default([]),
     mcp_servers: z.record(mcpName, mcpServerSchema).default({}),
     default_plugins: z.array(pluginName).default([]),
@@ -173,7 +194,7 @@ export async function loadConfig(home = musterHome()): Promise<Config> {
     seen.add(key);
   }
   if (
-    (["danger-full-access", "full-access"].includes(result.sandbox) ||
+    (["danger-full-access", "full-access"].includes(result.sandbox ?? "") ||
       result.permissions === "bypass") &&
     !result.allow_dangerous_flags
   )

@@ -19,6 +19,8 @@ export function enforcementGrade(
   runtime: Runtime,
   resolved: LaunchPermissions,
 ): Enforcement {
-  if (resolved.sandbox === "full-access") return "none";
+  // Normal: the agent's own settings decide, and muster imposes nothing.
+  if (resolved.sandbox === "full-access" || resolved.sandbox === "normal")
+    return "none";
   return AGENTS[runtime].enforcement;
 }

@@ -81,13 +81,35 @@ tools; it does not claim kernel-enforced isolation. Auto still requires
 `workspace-write`, and bypass still requires authorized `full-access`.
 
 The concurrency cap is shared by separate CLI/MCP processes, including pending
-launches. Settings apply to both kinds; tasks are read-only by default.
+launches. Settings apply to both kinds. A Claude task naming nothing is a
+normal launch like a Claude session; Codex and OpenCode tasks are read-only by
+default.
 
 Codex defaults to an explicit sandbox and never-ask approval policy. Muster enumerates
 and explicitly disables inherited MCP servers, enables only the selected
 operator definitions, then verifies the effective server selection. Hooks, plugins, app connectors, automatic skill-MCP installation
 and external notifications are disabled for the child. Unknown MCP names that
 cannot be addressed safely are refused.
+
+**A Claude launch that names no level, `--permissions` or `--sandbox`, with
+neither key set in `config.toml`, is a normal launch:** `claude [-p]` plus the
+prompt, run as a person would run it in that profile and folder. All three
+setting sources load (user, project, local), and with them come the profile's
+rules and CLAUDE.md, the `env` and `autoMode` blocks, its permissions, hooks,
+status line, plugins and MCP servers. Muster passes no permission mode, no
+`--settings` and no `--strict-mcp-config`. It applies no `default_mcp`, because
+the profile brings its own, but a server named with `--mcp` is added beside
+them. It refuses one thing: a profile or project whose
+`permissions.defaultMode` is `bypassPermissions`, which needs `--unrestricted`.
+Managed policy is not refused here; a normal launch obeys it as a hand launch
+does. Records show `permissions` and `sandbox` as `normal`, and `enforcement`
+as `none`, because muster imposes nothing. `CLAUDE_CODE_*` variables in the
+launching environment are still stripped: they belong to the caller's own
+session (often a different profile), and the child's profile `env` block
+supplies its own.
+
+What follows describes a **sealed** launch, which is any level other than
+`normal`, or any `--permissions`/`--sandbox`.
 
 Claude's built-in tools default to enabled. Unless full access is selected, its command sandbox is enabled,
 requires availability, and forbids unsandboxed retries. File-writing tools and
@@ -160,7 +182,7 @@ silent no-op.
 | Option                  | What it does                                                                                                                 |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `auto-approve-path`     | Records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch. |
-| `accept-bypass-warning` | Accepts Claude's one-time "Bypass Permissions mode" warning for this launch, so a `--level open` session can start.         |
+| `accept-bypass-warning` | Accepts Claude's one-time "Bypass Permissions mode" warning for this launch, so an `--unrestricted` session can start.        |
 
 `auto-approve-path` needs a runtime with a workspace-trust gate: Claude and
 Codex have one, OpenCode does not and the option is refused for it. The record
@@ -196,12 +218,12 @@ WARNING: Claude Code running in Bypass Permissions mode
 
 A person at the terminal can answer it once and Claude remembers, in the
 profile's `settings.json`. A Muster launch never reads that file
-(`--setting-sources ""`), so every unattended `--level open` launch stops there
+(`--setting-sources ""`), so every unattended `--unrestricted` launch stops there
 and times out. The option sets `skipDangerousModePermissionPrompt` in the
 settings Muster passes for that launch only.
 
 It is refused anywhere the warning cannot appear: for Codex and OpenCode, and
-for any launch whose permissions are not `bypass`. `--level open` alone does
+for any launch whose permissions are not `bypass`. `--unrestricted` alone does
 not imply it. Accepting the warning stays visible in the command that did it,
 and `bypass` still needs `allow_dangerous_flags = true`. A bypass session that
 times out without the option says so, rather than the generic "check the
@@ -223,14 +245,16 @@ tool error the agent can read and react to, while a sandbox refusal arrives as
 can interpret. `enforcement` below records which of the two a launch actually
 got.
 
-`--level` names a legal `--permissions` / `--sandbox` pair. It is a spelling,
-not a second policy path, and naming both a level and either flag is an error.
+A level names a legal `--permissions` / `--sandbox` pair. It is a spelling,
+not a second policy path, and naming two of a level flag, `--level` and
+`--permissions`/`--sandbox` is an error.
 
-| Level  | Equivalent to                                                                         |
-| ------ | ------------------------------------------------------------------------------------- |
-| `read` | `--permissions deny --sandbox read-only`                                              |
-| `work` | `--permissions auto --sandbox workspace-write`                                        |
-| `open` | `--permissions bypass --sandbox full-access` (still requires `allow_dangerous_flags`) |
+| Flag             | `--level` | Equivalent to                                                                         |
+| ---------------- | --------- | ------------------------------------------------------------------------------------- |
+| `--read-only`    | `read`    | `--permissions deny --sandbox read-only`                                              |
+| `--write-here`   | `work`    | `--permissions auto --sandbox workspace-write`                                        |
+| (none, claude)   | `normal`  | the profile's own settings; see above. Claude only                                    |
+| `--unrestricted` | `open`    | `--permissions bypass --sandbox full-access` (still requires `allow_dangerous_flags`) |
 
 `deny` with `workspace-write` or `full-access` has no level and stays available
 through the flags.
@@ -322,15 +346,21 @@ rather than a precedence rule. `label` is optional and never read for policy.
 
 `allowed_roots` is **required** on a profile and must be non-empty — it is the
 one key with no safe default, since the global `allowed_roots` defaults to
-empty and empty is read as permitting anything the account can reach. Every
-other key defaults to its narrowest value: `level` defaults to `read` and
-excludes `open` (no remote request may disable the sandbox), `min_enforcement`
-defaults to `kernel` (the default admits Codex and Claude Code; `tool-policy`
-is what admits OpenCode), and `env_allow`/`env_defaults` default to empty.
+empty and empty is read as permitting anything the account can reach.
+
+`level` defaults to `normal`: an enrolled remote caller gets the same launch a
+local one does, a Claude agent opened on this machine's own profile settings
+(decided 2026-10-14). A Codex or OpenCode request under that default gets
+`read`, as it would locally. Name `read` or `work` to cap a requester. `open`
+is excluded (no remote request may disable the sandbox). `min_enforcement`
+follows the level: `none` for a `normal` profile, because muster enforces
+nothing in a normal launch, and `kernel` for a capped one (it admits Codex and
+Claude Code; `tool-policy` is what admits OpenCode). A `normal` profile that
+names a stricter `min_enforcement` is a configuration error.
+`env_allow`/`env_defaults` default to empty.
 Where a key appears in both, `env_defaults` wins — a profile that pins a value
-and also allows the key means the value it pinned, not the accepting shell's. A
-profile written as nothing but a required `allowed_roots` is therefore the
-most restrictive profile expressible.
+and also allows the key means the value it pinned, not the accepting shell's.
+The most restrictive profile is `allowed_roots` plus `level = "read"`.
 
 `identities` bounds which named identities (see [Agent
 identities](#agent-identities) above) a non-local requester may launch under,

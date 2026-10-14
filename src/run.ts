@@ -314,7 +314,14 @@ export class Muster {
     // defaults. So the profile is the floor here as well as the ceiling. A
     // local requester has no `policy.level`, which leaves this undefined and
     // local behaviour untouched.
-    const level = req.level ?? policy.level;
+    // A profile's normal default applies to claude only, the one runtime with
+    // a normal launch; any other runtime gets the read default it would get
+    // locally, rather than a refusal for a level the caller never named.
+    const level =
+      req.level ??
+      (policy.level === "normal" && req.runtime !== "claude"
+        ? "read"
+        : policy.level);
     if (level) assertLevelWithinCeiling(level, policy);
     return { req, policy, level };
   }
@@ -397,7 +404,7 @@ export class Muster {
      * that happens, so there is one: nothing below derives containment from
      * `req`.
      */
-    const effective = level ? { ...req, level } : req;
+    const requested = level ? { ...req, level } : req;
     if (req.kind === "task" && req.host)
       throw new Error("host applies only to session launches");
     if (req.terminal && !req.open)
@@ -409,7 +416,14 @@ export class Muster {
       (req.kind !== "session" || !["auto", "tmux"].includes(requestedHost))
     )
       throw new Error("--open requires a tmux session on macOS");
-    const permissions = resolvePermissions(effective, this.config);
+    const permissions = resolvePermissions(requested, this.config);
+    // A Claude launch naming nothing resolves to normal without having asked
+    // for it by name; spelled out here so everything below — MCP defaults,
+    // the argv, the record — sees one answer rather than re-deriving it.
+    const effective: RunRequest =
+      permissions.permissions === "normal"
+        ? { ...requested, level: "normal" }
+        : requested;
     // Refused here, with the other checks that cost nothing to fail: an option
     // the runtime cannot honour must not leave a registry entry behind.
     assertOptionsSupported(req.runtime, req.options, permissions);
@@ -453,7 +467,11 @@ export class Muster {
       throw new Error(
         `--open requires the selected terminal (${terminal}) installed on macOS and tmux`,
       );
-    if (req.runtime === "claude") await assertClaudePolicy(this.hostEnv);
+    // Managed policy is refused because muster cannot prove its own inline
+    // settings win over it. A normal launch has no settings of muster's to
+    // prove, and obeys managed policy exactly as a hand launch does.
+    if (req.runtime === "claude" && permissions.permissions !== "normal")
+      await assertClaudePolicy(this.hostEnv);
     if (req.runtime === "opencode")
       await assertOpenCodeVersion(this.hostEnv, "1.18.31", Date.now() + 4000);
     // After the driver, not beside resolveModel: the host that runs is

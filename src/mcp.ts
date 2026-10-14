@@ -71,8 +71,14 @@ export function toolGate(enabled: readonly string[]) {
 }
 
 export function selectMcp(req: RunRequest, config: Config): SelectedMcp[] {
-  // Personal defaults apply to sessions, not unattended one-shot tasks.
-  const names = req.mcp ?? (req.kind === "session" ? config.default_mcp : []);
+  // Personal defaults apply to sessions, not unattended one-shot tasks, and not
+  // to a normal launch: the profile already brings its own MCP servers, and a
+  // second copy of one under muster's bridge would register the session twice.
+  const names =
+    req.mcp ??
+    (req.kind === "session" && req.level !== "normal"
+      ? config.default_mcp
+      : []);
   return [...new Set(names)].map((name) => {
     const server = Object.hasOwn(config.mcp_servers, name)
       ? config.mcp_servers[name]

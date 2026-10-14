@@ -51,7 +51,7 @@ export const runSchema = z
       .regex(/^[a-zA-Z0-9_-]+$/)
       .optional(),
     requestKey: z.string().min(1).max(200).optional(),
-    level: z.enum(["read", "work", "open"]).optional(),
+    level: z.enum(["read", "work", "normal", "open"]).optional(),
     /**
      * Named things muster does on the caller's behalf. Closed set, unlike the
      * pass-through after `--`: see src/options.ts.
@@ -61,21 +61,47 @@ export const runSchema = z
   })
   .strict();
 export type RunRequest = z.infer<typeof runSchema>;
+/**
+ * `normal` on both sides is the one pair muster does not author: the agent is
+ * started exactly as a person would start it in that profile and directory,
+ * and its own settings decide permissions and sandbox. It is never mixed with
+ * a muster-authored half — `normal` + `read-only` would promise a fence that
+ * the profile's hooks and allow lists can widen.
+ */
 export type LaunchPermissions = {
-  permissions: "auto" | "deny" | "bypass";
-  sandbox: "read-only" | "workspace-write" | "full-access";
+  permissions: "auto" | "deny" | "bypass" | "normal";
+  sandbox: "read-only" | "workspace-write" | "full-access" | "normal";
 };
 /**
  * A level is a spelling of a legal `permissions` + `sandbox` pair, not a second
- * policy path — `test/level.test.ts` asserts the equivalence for all three.
+ * policy path — `test/level.test.ts` asserts the equivalence for every level.
  * The two legal combinations no level names, `deny` + `workspace-write` and
  * `deny` + `full-access`, stay reachable through the flags.
+ *
+ * The CLI spells them `--read-only`, `--write-here` and `--unrestricted`;
+ * `normal` has no flag because it is what a Claude launch naming none gets.
  */
 export const LEVELS = {
   read: { permissions: "deny", sandbox: "read-only" },
   work: { permissions: "auto", sandbox: "workspace-write" },
+  normal: { permissions: "normal", sandbox: "normal" },
   open: { permissions: "bypass", sandbox: "full-access" },
 } as const satisfies Record<string, LaunchPermissions>;
+/** The CLI's flag for each level, for messages that tell a caller what to type. */
+export const LEVEL_FLAGS = {
+  read: "--read-only",
+  work: "--write-here",
+  open: "--unrestricted",
+} as const;
+/** Only Claude has a launch muster can leave entirely to the profile so far. */
+function assertNormalSupported(runtime: RunRequest["runtime"]): void {
+  if (runtime !== "claude")
+    throw new Error(
+      `a normal launch (the agent's own settings, as if opened by hand) is ` +
+        `supported for claude only; for ${runtime} pass --read-only, ` +
+        `--write-here or --unrestricted`,
+    );
+}
 export type Level = keyof typeof LEVELS;
 /**
  * Checked against raw input before parsing, like `project` and `cwd`: once
@@ -96,6 +122,7 @@ export function resolvePermissions(
   config: Config,
 ): LaunchPermissions {
   if (req.level) {
+    if (req.level === "normal") assertNormalSupported(req.runtime);
     const pair: LaunchPermissions = { ...LEVELS[req.level] };
     if (
       (pair.permissions === "bypass" || pair.sandbox === "full-access") &&
@@ -106,8 +133,20 @@ export function resolvePermissions(
       );
     return pair;
   }
-  const permissions = req.permissions ?? config.permissions;
-  const configuredSandbox = req.sandbox ?? config.sandbox;
+  // Nothing named anywhere: a Claude launch opens as a person would open it.
+  // The other runtimes keep the sealed read-only default until they have a
+  // normal launch of their own. A config that names either key is an
+  // operator's explicit default and is honoured as before.
+  if (
+    req.permissions === undefined &&
+    req.sandbox === undefined &&
+    config.permissions === undefined &&
+    config.sandbox === undefined &&
+    req.runtime === "claude"
+  )
+    return { ...LEVELS.normal };
+  const permissions = req.permissions ?? config.permissions ?? "deny";
+  const configuredSandbox = req.sandbox ?? config.sandbox ?? "read-only";
   const sandbox =
     configuredSandbox === "danger-full-access"
       ? "full-access"
@@ -217,7 +256,7 @@ export function assertMusterHomeProtectable(
         `is inside muster's own home (${home}), which holds the config every ` +
         `later launch obeys. OpenCode's permissions are tool policy and cannot ` +
         `keep its shell out of one folder, so launch it in a folder that does ` +
-        `not contain muster's home, or at --level read.`,
+        `not contain muster's home, or with --read-only.`,
     );
 }
 /** Whether `inner` is `outer` or below it, by path segments, not characters. */
@@ -634,6 +673,12 @@ export function launchArgs(
   // builders, which carry the model in their config overlay.
   const model = resolved ? ["--model", resolved.model] : [];
   const policy = resolvePermissions(req, config);
+  if (policy.permissions === "normal") {
+    // `resolvePermissions` refuses this outside claude; restated so the codex
+    // branch below can never read `normal` as one of its own modes.
+    assertNormalSupported(req.runtime);
+    return normalClaudeArgs(req, mcp, bridgePath, env, model, extra);
+  }
   if (req.runtime === "codex")
     return [
       "codex",
@@ -766,6 +811,75 @@ export function launchArgs(
     "--",
     req.prompt,
   ];
+}
+/**
+ * A Claude launch exactly as a person would start it in this profile and
+ * directory: every setting source (so rules, CLAUDE.md, the env and autoMode
+ * blocks, permissions, hooks, the status line, plugins and the profile's own
+ * MCP servers), no permission mode of muster's, no sandbox of muster's.
+ *
+ * Muster adds only what the caller named: `--mcp` servers ride alongside the
+ * profile's (not instead of them — no `--strict-mcp-config`), and configured
+ * `default_mcp` is not applied because the profile already brings its own.
+ *
+ * The one thing it refuses is a profile or project that makes bypass the
+ * default: a muster launch never starts in bypass unless `--unrestricted`
+ * asked for it.
+ */
+function normalClaudeArgs(
+  req: RunRequest,
+  mcp: PreparedMcp[],
+  bridgePath: string | undefined,
+  env: NodeJS.ProcessEnv,
+  model: string[],
+  extra: string[],
+): string[] {
+  assertNoDefaultBypass(claudeConfigDir(env), req.cwd);
+  return [
+    "claude",
+    ...(req.kind === "task" ? ["-p"] : []),
+    ...(mcp.length
+      ? ["--mcp-config", JSON.stringify(claudeMcpConfig(mcp, bridgePath))]
+      : []),
+    ...model,
+    ...extra,
+    "--",
+    req.prompt,
+  ];
+}
+/**
+ * The setting files a hand launch reads for `permissions.defaultMode`, lowest
+ * precedence first. Managed policy is above all three and is the operator's
+ * organisation's to set, so it is not second-guessed here.
+ */
+export function claudeSettingFiles(configDir: string, cwd: string): string[] {
+  return [
+    join(configDir, "settings.json"),
+    join(cwd, ".claude", "settings.json"),
+    join(cwd, ".claude", "settings.local.json"),
+  ];
+}
+/** Refuses a normal launch whose effective default mode is bypassPermissions. */
+export function assertNoDefaultBypass(configDir: string, cwd: string): void {
+  let mode: unknown, from: string | undefined;
+  for (const file of claudeSettingFiles(configDir, cwd)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(file, "utf8"));
+    } catch {
+      // Missing or unreadable: Claude skips it too.
+      continue;
+    }
+    const value = (parsed as { permissions?: { defaultMode?: unknown } })
+      ?.permissions?.defaultMode;
+    if (value !== undefined) [mode, from] = [value, file];
+  }
+  if (mode === "bypassPermissions")
+    throw new Error(
+      `${from} sets permissions.defaultMode to bypassPermissions; muster ` +
+        `will not start a launch in bypass by default. Pass --unrestricted ` +
+        `to ask for it.`,
+    );
 }
 /** A path as given and as resolved, once each. An unresolvable path (it does
  *  not exist yet) is denied as given — nothing can be written through a

@@ -48,6 +48,8 @@ for (const runtime of ["codex", "claude"] as const) {
         prompt: "MCP configured",
         cwd: f.root,
         host: "pty",
+        // Sealed: a normal claude launch takes no default MCP (pinned below).
+        level: "read",
       }),
     );
     try {
@@ -109,6 +111,56 @@ for (const runtime of ["codex", "claude"] as const) {
     }
   });
 }
+test("a normal claude session takes the profile's MCP servers, not muster's defaults", async () => {
+  const { f, m } = await setup();
+  const peer = asSession(
+    await m.run({
+      runtime: "claude",
+      prompt: "normal",
+      cwd: f.root,
+      host: "pty",
+    }),
+  );
+  try {
+    expect(peer.mcp).toEqual([]);
+    expect(peer.permissions).toBe("normal");
+    const args = (await lines(join(f.root, "starts.jsonl")))[0]
+      .argv as string[];
+    for (const flag of [
+      "--setting-sources",
+      "--strict-mcp-config",
+      "--settings",
+      "--mcp-config",
+      "--permission-mode",
+    ])
+      expect(args).not.toContain(flag);
+  } finally {
+    await m.stop(peer.canonical_id);
+    await m.close();
+  }
+});
+test("a normal claude launch adds a named MCP server beside the profile's", async () => {
+  const { f, m } = await setup();
+  const peer = asSession(
+    await m.run({
+      runtime: "claude",
+      prompt: "normal plus",
+      cwd: f.root,
+      host: "pty",
+      mcp: ["fixture"],
+    }),
+  );
+  try {
+    expect(peer.mcp).toEqual(["fixture"]);
+    const args = (await lines(join(f.root, "starts.jsonl")))[0]
+      .argv as string[];
+    expect(args).toContain("--mcp-config");
+    expect(args).not.toContain("--strict-mcp-config");
+  } finally {
+    await m.stop(peer.canonical_id);
+    await m.close();
+  }
+});
 test("unknown requested server fails before launching an agent", async () => {
   const { f, m } = await setup();
   try {
@@ -137,6 +189,7 @@ test("optional unavailable default is skipped; explicit request makes it require
       prompt: "optional",
       cwd: f.root,
       host: "pty",
+      level: "read",
     }),
   );
   try {
@@ -202,7 +255,13 @@ test("MCP preflight is bounded and never logs server stderr secrets", async () =
   const started = Date.now();
   try {
     await expect(
-      m.run({ runtime: "claude", prompt: "timeout", cwd: f.root, host: "pty" }),
+      m.run({
+        runtime: "claude",
+        prompt: "timeout",
+        cwd: f.root,
+        host: "pty",
+        level: "read",
+      }),
     ).rejects.toThrow(/fixture.*startup/);
     expect(Date.now() - started).toBeLessThan(3000);
     expect(

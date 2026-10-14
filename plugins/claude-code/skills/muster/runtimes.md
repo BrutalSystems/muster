@@ -88,12 +88,13 @@ owned by that account:
 
 ```sh
 CLAUDE_CONFIG_DIR="$HOME/.claude-work" muster run claude --cwd ~/src/api \
-  --level work --prompt "…"
+  --prompt "…"
 ```
 
 Codex uses `CODEX_HOME` the same way. Under `work`, the launched session may
-write that config dir (its memory lives there). Remember what is dropped from
-that profile's settings ([containment.md](containment.md)).
+write that config dir (its memory lives there). A normal Claude launch uses
+that profile's settings in full; a sealed one drops most of them
+([containment.md](containment.md)).
 
 **A muster identity** (`--identity NAME`). A named, pre-authenticated template
 under `~/.muster/identities/<name>`; each launch runs from a fresh per-launch

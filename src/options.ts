@@ -49,7 +49,7 @@ export function assertOptionsSupported(
       permissions.permissions !== "bypass"
     )
       throw new Error(
-        `--options accept-bypass-warning requires bypass permissions (--level open or --permissions bypass); this launch resolves to ${permissions.permissions}`,
+        `--options accept-bypass-warning requires bypass permissions (--unrestricted or --permissions bypass); this launch resolves to ${permissions.permissions}`,
       );
   }
 }

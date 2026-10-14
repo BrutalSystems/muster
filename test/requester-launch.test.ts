@@ -27,6 +27,7 @@ const twoRequesters = () => `
 launch_timeout_sec = 3
 
 [requester_profiles.research]
+level = "read"
 allowed_roots = ["/"]
 env_allow = ["CODEX_HOME", "MUSTER_FAKE_ROOT", "MUSTER_FAKE_PYTHON", "MUSTER_TEST_HOME"]
 
@@ -67,6 +68,7 @@ launch_timeout_sec = 3
 ${globals}
 
 [requester_profiles.research]
+level = "read"
 allowed_roots = ["/"]
 env_allow = ["CODEX_HOME", "MUSTER_FAKE_ROOT", "MUSTER_FAKE_PYTHON", "MUSTER_TEST_HOME"]
 ${profileExtra}
@@ -258,6 +260,7 @@ test("the agent gets the composed environment, not Muster's own", async () => {
 launch_timeout_sec = 3
 
 [requester_profiles.research]
+level = "read"
 allowed_roots = ["/"]
 env_allow = ["CODEX_HOME"]
 
@@ -303,6 +306,7 @@ launch_timeout_sec = 3
 elsewhere = "/tmp"
 
 [requester_profiles.research]
+level = "read"
 allowed_roots = ["/var/empty"]
 
 [[requesters]]
@@ -415,6 +419,7 @@ permissions = "auto"
 sandbox = "workspace-write"
 
 [requester_profiles.research]
+level = "read"
 allowed_roots = ["/"]
 min_enforcement = "tool-policy"
 env_allow = ["MUSTER_FAKE_ROOT", "MUSTER_FAKE_PYTHON", "MUSTER_TEST_HOME"]
@@ -604,6 +609,55 @@ profile = "research"
     expect(settings.enabledPlugins).toEqual({
       "conventions@example-marketplace": true,
     });
+  } finally {
+    await m.close();
+  }
+}, 15000);
+
+test("an uncapped remote profile launches claude normal and codex read-only", async () => {
+  // A profile that names no level gets the operator's own kind of launch
+  // (Mike, 2026-10-14) — for claude, the one runtime that has one. Codex gets
+  // the read default it would get locally, not a refusal for a level the
+  // caller never named.
+  const f = await fixture();
+  await writeFile(
+    join(f.home, "config.toml"),
+    `
+launch_timeout_sec = 3
+
+[requester_profiles.research]
+allowed_roots = ["/"]
+env_allow = ["CODEX_HOME", "MUSTER_FAKE_ROOT", "MUSTER_FAKE_PYTHON", "MUSTER_TEST_HOME"]
+
+[requester_profiles.research.env_defaults]
+LANG = "en_US.UTF-8"
+
+[[requesters]]
+authority = "example.peer.v1"
+subject = "abc"
+profile = "research"
+`,
+  );
+  const m = await Muster.create({
+    home: f.home,
+    env: f.env,
+    drivers: [new PtyHost()],
+  });
+  try {
+    const claude = await m.run(
+      { runtime: "claude", prompt: "hello", cwd: f.root },
+      remote,
+    );
+    expect(claude.permissions).toBe("normal");
+    const argv = (await lines(join(f.root, "starts.jsonl")))[0]
+      .argv as string[];
+    expect(argv).not.toContain("--setting-sources");
+    const codex = await m.run(
+      { runtime: "codex", prompt: "hello", cwd: f.root },
+      remote,
+    );
+    expect(codex.permissions).toBe("deny");
+    expect(codex.sandbox).toBe("read-only");
   } finally {
     await m.close();
   }

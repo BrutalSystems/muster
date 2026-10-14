@@ -47,19 +47,19 @@ export const MCP_TOOLS = [
           type: "string",
           enum: ["auto", "deny", "bypass"],
           description:
-            "Defaults to config (deny). Auto requires workspace-write; bypass requires authorized full-access.",
+            "Seals the launch. Defaults to config, else deny (claude: normal when config names neither). Auto requires workspace-write; bypass requires authorized full-access.",
         },
         sandbox: {
           type: "string",
           enum: ["read-only", "workspace-write", "full-access"],
           description:
-            "Defaults to config (read-only). Full access requires config authorization.",
+            "Seals the launch. Defaults to config, else read-only (claude: normal when config names neither). Full access requires config authorization.",
         },
         level: {
           type: "string",
-          enum: ["read", "work", "open"],
+          enum: ["read", "work", "normal", "open"],
           description:
-            "A spelling of a legal permissions/sandbox pair: read is deny + read-only, work is auto + workspace-write, open is bypass + full-access. Naming a level and either flag is an error.",
+            "normal (claude's default, claude only) opens the agent exactly as a person would by hand: the profile's rules, CLAUDE.md, permissions, hooks, plugins and MCP servers. read (deny + read-only), work (auto + workspace-write) and open (bypass + full-access) are sealed: muster's settings replace the profile's, so no rules or CLAUDE.md load. Naming a level and permissions or sandbox is an error.",
         },
         mcp: {
           type: "array",

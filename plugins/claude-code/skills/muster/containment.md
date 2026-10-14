@@ -11,26 +11,29 @@ Back to [SKILL.md](SKILL.md).
   touch. For Claude and Codex the OS enforces it (seatbelt, macOS only); a
   refusal arrives as `EPERM` with no explanation the agent can interpret.
 
-`--level` is shorthand for a legal pair, never a second policy:
+The three sealing flags are shorthand for a legal pair, never a second policy
+(`--level read|work|open` is the older spelling):
 
-| Level | Equivalent |
+| Flag | Equivalent |
 |---|---|
-| `read` | `--permissions deny --sandbox read-only` |
-| `work` | `--permissions auto --sandbox workspace-write` |
-| `open` | `--permissions bypass --sandbox full-access` |
+| `--read-only` | `--permissions deny --sandbox read-only` |
+| `--write-here` | `--permissions auto --sandbox workspace-write` |
+| `--unrestricted` | `--permissions bypass --sandbox full-access` |
 
 `deny` with `workspace-write` (edit without auto-approving escalations) has no
 level; spell it with the two flags. `auto` requires `workspace-write`; `bypass`
-requires `full-access`. With neither `--level` nor the flags, the launch uses
-`permissions` / `sandbox` from `~/.muster/config.toml` (default `deny` +
-`read-only`).
+requires `full-access`. With none of these, the launch uses `permissions` /
+`sandbox` from `~/.muster/config.toml` if either is set there. If neither is
+set, a Claude launch is **normal** (below) and Codex or OpenCode get `deny` +
+`read-only`.
 
 Every result reports `enforcement`: `kernel` (Claude or Codex, sandbox
 active), `tool-policy` (OpenCode — rules the agent is asked to respect, no
-kernel fence) or `none` (`full-access`). Off macOS, `enforcement` reports what
+kernel fence) or `none` (`full-access`, or a normal launch, where the
+profile's own settings decide and muster imposes nothing). Off macOS, `enforcement` reports what
 was actually applied.
 
-## What each level allows a Claude session
+## What each sealed level allows a Claude session
 
 - **`read`** — reads anything; writes refused everywhere, including its config
   dir and memory. Bash runs and reports honest exit codes.
@@ -58,8 +61,25 @@ current base. Conversely, `read` does not by itself stop a network action.
 
 ## What a Claude launch keeps from the profile
 
-muster starts Claude with `--setting-sources ""`, `--strict-mcp-config` and its
-own inline settings. From the profile's `settings.json`:
+**Normal launch (the default): everything.** muster runs `claude [-p]` with the
+prompt and nothing else, so the session gets what `claude` typed by hand in
+that folder gets:
+- user, project and local settings;
+- rules and CLAUDE.md;
+- the `env` and `autoMode` blocks;
+- permissions, including `additionalDirectories`;
+- hooks and the status line;
+- plugins;
+- the profile's MCP servers and connectors.
+
+`default_mcp` is not added, since the profile brings its own; `--mcp NAME`
+adds a server beside them. muster refuses the launch only when the profile's or
+project's `permissions.defaultMode` is `bypassPermissions`.
+
+**Sealed launch (`--read-only`, `--write-here`, `--unrestricted`):** muster
+starts Claude with `--setting-sources ""`, `--strict-mcp-config` and its own
+inline settings, so **no rules or CLAUDE.md load**. From the profile's
+`settings.json`:
 
 | Kept | Dropped |
 |---|---|
@@ -73,9 +93,10 @@ own inline settings. From the profile's `settings.json`:
 `CLAUDE_CONFIG_DIR` **is** inherited, so the session runs under whichever
 config dir the caller's environment names (see [runtimes.md](runtimes.md)).
 
-muster refuses a Claude launch when it detects managed policy files
+muster refuses a sealed Claude launch when it detects managed policy files
 (`managed-settings.json` and friends), because it cannot prove its inline
-settings win over them.
+settings win over them. A normal launch has no inline settings to prove and
+obeys managed policy as a hand launch does.
 
 ## Workspace trust (Claude, and Codex's equivalent)
 
@@ -103,5 +124,6 @@ session.
 
 With `allowed_roots` or `[projects]` configured, a launch outside them is
 refused. `--project NAME` launches in a configured project's directory. This
-limits where a session **starts**, not what it can reach afterwards; the level
-is what limits that.
+limits where a session **starts**, not what it can reach afterwards. A sealed
+level limits that; a normal launch is limited only by the profile's own
+settings.
