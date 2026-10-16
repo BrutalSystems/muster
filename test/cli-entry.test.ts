@@ -1,11 +1,12 @@
 import { test, expect } from "vitest";
 import { existsSync } from "node:fs";
 import { spawn } from "node-pty";
-import { execFile } from "node:child_process";
+import { execFile, spawn as spawnChild } from "node:child_process";
 import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { mkdir } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { statusText } from "../src/format.js";
 import { Registry } from "../src/registry.js";
@@ -290,4 +291,45 @@ test("the sealed-level flags are exclusive with each other and with --level", as
   await expect(run(["list", "--read-only"])).rejects.toThrow(
     /applies only to run/,
   );
+}, 20000);
+
+/**
+ * `muster list | head -1` with more output than a pipe holds: the reader
+ * leaves, the rest of the write fails with EPIPE, and Node used to exit on the
+ * unhandled stream error — inside the registry transaction `close()` runs, so
+ * the lock was never released and every later muster command on the machine
+ * failed with "Registry locked" (2026-10-16).
+ */
+test("a reader that leaves early neither crashes the CLI nor strands the lock", async () => {
+  const root = await mkdtemp(join(tmpdir(), "muster-epipe-"));
+  const home = join(root, ".muster");
+  await mkdir(home);
+  const at = new Date().toISOString();
+  await writeFile(
+    join(home, "registry.json"),
+    JSON.stringify(
+      Array.from({ length: 400 }, (_, i) => ({
+        id: `entry-${i}`,
+        launchId: `entry-${i}`,
+        runtime: "claude",
+        kind: "task",
+        cwd: root,
+        status: "exited",
+        createdAt: at,
+        owner: { pid: 1, start: "never" },
+        error: "x".repeat(400),
+      })),
+    ),
+  );
+  const child = spawnChild(process.execPath, [cli, "list", "--format", "human"], {
+    env: { ...process.env, HOME: root },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr!.on("data", (d) => (stderr += d));
+  child.stdout!.once("data", () => child.stdout!.destroy());
+  const code = await new Promise((r) => child.once("exit", r));
+  expect(stderr).not.toContain("EPIPE");
+  expect(code).toBe(0);
+  expect(existsSync(join(home, "registry.lock"))).toBe(false);
 }, 20000);

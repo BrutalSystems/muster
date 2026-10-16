@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   processRef,
   isSame,
@@ -112,28 +114,53 @@ export class IdempotencyKeyReuse extends Error {
     this.name = "IdempotencyKeyReuse";
   }
 }
+/**
+ * A lock directory with no owner file is presumed live for this long. Long
+ * enough that no transaction comes near it, and the holder writes its owner
+ * file immediately after taking the lock, so in practice only a lock left by a
+ * version that wrote none (an empty directory) ever reaches it.
+ */
+const UNOWNED_LOCK_MS = 60_000;
+let self: ProcessRef | undefined;
 export class Registry {
-  constructor(readonly home: string) {}
+  /** `lockWait` is how long to wait for a live holder; tests shorten it. */
+  constructor(
+    readonly home: string,
+    private readonly lockWait = 5000,
+  ) {}
   private async transaction<T>(
     fn: (entries: Entry[]) => Promise<T>,
   ): Promise<T> {
     await mkdir(this.home, { recursive: true, mode: 0o700 });
     const lock = join(this.home, "registry.lock");
-    const deadline = Date.now() + 5000;
+    const deadline = Date.now() + this.lockWait;
     while (true) {
       try {
         await mkdir(lock);
         break;
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-        if (Date.now() > deadline)
+        if (await this.breakStale(lock)) continue;
+        if (Date.now() > deadline) {
+          const owner = await lockOwner(lock);
           throw new Error(
-            "Registry locked; verify no Muster operation is running before removing registry.lock",
+            owner
+              ? `Registry locked, held by pid ${owner.pid}; verify no Muster operation is running before removing registry.lock`
+              : "Registry locked; verify no Muster operation is running before removing registry.lock",
           );
+        }
         await delay(20);
       }
     }
     try {
+      // The lock is released only by this process's `finally`, which does not
+      // run if the process dies first: an unhandled EPIPE, or a SIGKILL from a
+      // client stopping its MCP server. The owner file is what lets the next
+      // process see that and take the lock over instead of waiting forever.
+      // Cached only once known: a `ps` that failed once must not leave every
+      // later transaction of a long-lived server unowned.
+      const ref = (self ??= await lockRef(process.pid));
+      if (ref) await writeFile(join(lock, "owner.json"), JSON.stringify(ref));
       let entries: Entry[] = [];
       try {
         const value: unknown = JSON.parse(
@@ -193,6 +220,38 @@ export class Registry {
       return result;
     } finally {
       await rm(lock, { recursive: true });
+    }
+  }
+  /**
+   * Removes the lock if its holder is provably gone: its recorded process is
+   * not running, or it recorded none and is older than any transaction.
+   *
+   * Breaking is serialized by a second directory and the verdict re-checked
+   * inside it. Without that, two waiters could both judge the same dead lock,
+   * one break it and take a new lock, and the other then remove that live one.
+   */
+  private async breakStale(lock: string): Promise<boolean> {
+    const breaker = `${lock}.break`;
+    try {
+      await mkdir(breaker);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      // A breaker holds this for milliseconds; one this old died holding it.
+      const age = await ageMs(breaker);
+      if (age !== undefined && age > UNOWNED_LOCK_MS)
+        await rm(breaker, { recursive: true, force: true });
+      return false;
+    }
+    try {
+      const owner = await lockOwner(lock);
+      const stale = owner
+        ? await holderGone(owner)
+        : ((await ageMs(lock)) ?? 0) > UNOWNED_LOCK_MS;
+      if (!stale) return false;
+      await rm(lock, { recursive: true, force: true });
+      return true;
+    } finally {
+      await rm(breaker, { recursive: true, force: true });
     }
   }
   async all(): Promise<Entry[]> {
@@ -291,5 +350,60 @@ export class Registry {
       Object.assign(entry, patch);
       return structuredClone(entry);
     });
+  }
+}
+async function lockOwner(lock: string): Promise<ProcessRef | undefined> {
+  try {
+    const value = JSON.parse(
+      await readFile(join(lock, "owner.json"), "utf8"),
+    ) as Partial<ProcessRef>;
+    return typeof value.pid === "number" && typeof value.start === "string"
+      ? { pid: value.pid, start: value.start }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/**
+ * The holder's identity as written into the lock. `ps` prints the start time in
+ * the caller's timezone and language, and the holder and a waiter need not
+ * share either (an MCP client's environment, a terminal's). Fixing both here
+ * makes the two readings comparable; `processRef`, whose strings are already
+ * stored in registry.json, is left as it is.
+ */
+async function lockRef(pid: number): Promise<ProcessRef | undefined> {
+  try {
+    const { stdout } = await promisify(execFile)(
+      "ps",
+      ["-p", String(pid), "-o", "lstart=,stat="],
+      { timeout: 1000, env: { ...process.env, TZ: "UTC", LC_ALL: "C" } },
+    );
+    const out = stdout.trim();
+    if (!out || /\bZ\S*$/.test(out)) return;
+    return { pid, start: out.slice(0, 24) };
+  } catch {
+    return;
+  }
+}
+/**
+ * Gone only on positive evidence. `processRef` answers undefined for any `ps`
+ * failure, a timeout under load included, and breaking a live lock on that
+ * would let two transactions interleave their writes.
+ */
+async function holderGone(owner: ProcessRef): Promise<boolean> {
+  try {
+    process.kill(owner.pid, 0);
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "ESRCH";
+  }
+  // The pid is in use; it is the holder unless it started at another time.
+  const now = await lockRef(owner.pid);
+  return now !== undefined && now.start !== owner.start;
+}
+async function ageMs(path: string): Promise<number | undefined> {
+  try {
+    return Date.now() - (await stat(path)).mtimeMs;
+  } catch {
+    return undefined;
   }
 }
