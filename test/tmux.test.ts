@@ -253,6 +253,12 @@ test("a launch sets the server options an attached terminal needs", async () => 
       .split("\n")
       .filter((row) => row.includes("extkeys"));
     expect(features).toEqual([expect.stringMatching(/ xterm\*:extkeys$/)]);
+    const progress = (await show(["show-options", "-s", "terminal-features"]))
+      .split("\n")
+      .filter((row) => row.includes("progressbar"));
+    expect(progress).toEqual([
+      expect.stringMatching(/ xterm-ghostty:progressbar$/),
+    ]);
   } finally {
     for (const ref of refs) await host.stop(ref).catch(() => {});
     await command("tmux", ["-L", server, "kill-server"]).catch(() => {});

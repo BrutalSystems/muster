@@ -123,6 +123,19 @@ export function titleOptions(
  * TERM Ghostty, iTerm2 and Terminal.app report; a terminal that does not
  * support the request ignores it.
  *
+ * `progressbar` lets tmux pass a pane's progress (OSC 9;4, which Claude Code
+ * sends while it works) to the attached terminal, and it has to be declared
+ * here rather than left to tmux. Muster starts the agent before any terminal
+ * attaches, so its first turn has usually set progress by then; tmux learns
+ * Ghostty's `progressbar` only from the XTVERSION reply after attaching, and
+ * does not then send the progress it is already holding, so the pane shows no
+ * busy state for the whole of that turn. Declared up front, the held state is
+ * replayed on attach. It matches any client whose TERM is `xterm-ghostty`
+ * (what Ghostty and Scotty set), whether or not that client ever answers
+ * XTVERSION, rather than `xterm*`: Terminal.app has no progress bar and iTerm2
+ * has read OSC 9 as a notification. It reaches clients that attach after the
+ * next launch on a server, not clients already attached.
+ *
  * `-q` because these name options newer than some tmux still installed
  * (`extended-keys-format` arrived in 3.5, `terminal-features` in 3.2), and an
  * unknown option is an error that would abort the whole command list and with
@@ -134,6 +147,7 @@ export const SERVER_OPTIONS: string[][] = [
   ["-s", "extended-keys", "always"],
   ["-s", "extended-keys-format", "csi-u"],
   ["-s", "terminal-features[90]", "xterm*:extkeys"],
+  ["-s", "terminal-features[91]", "xterm-ghostty:progressbar"],
 ];
 /** `SERVER_OPTIONS` as `;`-terminated `set-option` commands, to lead a
  *  command list. */
