@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.0.2 — 2026-10-16
 
 **A muster process that dies mid-write no longer locks every muster command
 on the machine.** The registry lock was an empty directory that only its
