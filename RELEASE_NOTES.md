@@ -10,6 +10,15 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**A Scotty pane shows a muster session as busy from its first turn.** muster
+starts the agent before any terminal attaches, and tmux learns a Ghostty
+client's progress-bar support only after attach, so a progress state set
+before then was never sent. The tmux server now declares `progressbar` for
+`xterm-ghostty` clients up front, and tmux replays the held state on attach.
+Takes effect for clients that attach after the next launch on a server.
+
 ## 3.0.0 — 2026-10-14
 
 **Breaking: a Claude launch now opens exactly as you would open it by hand.**
