@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.0.1 — 2026-10-16
 
 **A Scotty pane shows a muster session as busy from its first turn.** muster
 starts the agent before any terminal attaches, and tmux learns a Ghostty
