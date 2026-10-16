@@ -79,6 +79,14 @@ function identitiesHuman(
   return lines.join("\n") + "\n";
 }
 async function main() {
+  // A reader that leaves early (`muster list | head -1`) makes the rest of a
+  // large write fail with EPIPE. Unhandled, that error exits Node on the spot —
+  // inside whatever registry transaction `close()` is running, which strands
+  // the lock. Nobody is left to read the output, so dropping it is correct.
+  for (const stream of [process.stdout, process.stderr])
+    stream.on("error", (e: NodeJS.ErrnoException) => {
+      if (e.code !== "EPIPE") throw e;
+    });
   const argv = process.argv.slice(2);
   if (argv[0] === "--help" || argv[0] === "-h") {
     process.stdout.write(topLevelHelp());

@@ -10,6 +10,23 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**A muster process that dies mid-write no longer locks every muster command
+on the machine.** The registry lock was an empty directory that only its
+creator's `finally` removed. A process that died first left it there for good,
+and every later command, in every session, failed with "Registry locked" until
+someone deleted it by hand. That happened on 2026-10-16. Now the lock records
+its holder's pid and start time, and the next process takes it over when that
+holder is provably gone. An empty lock left by an earlier version is taken
+over once it is a minute old. While a live process holds the lock, the
+"Registry locked" error names its pid.
+
+**`muster list | head -1` no longer crashes muster.** When the reader left
+before muster finished writing a long listing, the write failed with EPIPE.
+Node exited on the spot, inside a registry transaction, and that is what left
+the lock behind. muster now drops output nobody is reading and exits normally.
+
 ## 3.0.1 — 2026-10-16
 
 **A Scotty pane shows a muster session as busy from its first turn.** muster
