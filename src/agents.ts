@@ -51,10 +51,10 @@ export type AgentCapabilities = {
    */
   runtimeOptions: { forwarded: string[]; consumed: string[] };
   /**
-   * Records that a directory is trusted, in the per-launch identity copy —
-   * never in the live configuration, which a running session rewrites
-   * continuously and Muster cannot coordinate with. `null` where the agent has
-   * no such gate.
+   * Records that a directory is trusted, in the configuration the agent will
+   * read: the per-launch identity copy, or for `--options auto-approve-path`
+   * the named configuration home, or Codex's default `~/.codex`. `null` where
+   * the agent has no such gate.
    *
    * A slot rather than explicit dispatch because the INPUTS match: every agent
    * that has this answers the same question from the same two arguments. That

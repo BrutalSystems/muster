@@ -1,4 +1,10 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  copyFile,
+  mkdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import TOML from "@iarna/toml";
 import { identityPath, type IdentityMeta } from "./identity-store.js";
@@ -151,8 +157,10 @@ export async function setWorkspaceTrust(
  * parses and is accepted, and the prompt still appears: the check reads
  * persisted config, so the entry has to be in the file.
  *
- * The user's real `~/.codex/config.toml` is never touched, for the same reason
- * `setWorkspaceTrust` leaves the live `~/.claude.json` alone.
+ * Also called on the user's own `~/.codex/config.toml`, for an
+ * `--options auto-approve-path` launch with no CODEX_HOME — the file that
+ * launch's Codex reads. That is why a new entry is appended rather than the
+ * file re-serialised.
  */
 export async function setCodexWorkspaceTrust(
   copyPath: string,
@@ -182,6 +190,20 @@ export async function setCodexWorkspaceTrust(
   const projects = (data.projects ?? {}) as Record<string, unknown>;
   const existing = (projects[cwd] ?? {}) as Record<string, unknown>;
   if (existing.trust_level === "trusted") return;
+  // No entry yet: append one table, exactly as Codex itself does when you
+  // answer its dialog. This file may be the user's own `~/.codex/config.toml`
+  // (a launch with no CODEX_HOME), and re-serialising it would drop every
+  // comment and reorder every key in it. Not when `projects` is an inline
+  // table, where a second `[projects.…]` header would be a TOML error.
+  if (!(cwd in projects) && !/^\s*projects\s*=/m.test(raw ?? "")) {
+    const lead = raw && !raw.endsWith("\n") ? "\n" : "";
+    await appendFile(
+      file,
+      `${lead}\n[projects.${JSON.stringify(cwd)}]\ntrust_level = "trusted"\n`,
+      { mode: 0o600 },
+    );
+    return;
+  }
   projects[cwd] = { ...existing, trust_level: "trusted" };
   data.projects = projects;
   // Re-serialised rather than appended, so an entry the template already

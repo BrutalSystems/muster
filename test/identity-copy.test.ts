@@ -253,6 +253,37 @@ test("setCodexWorkspaceTrust leaves an already-trusted file untouched", async ()
   expect(await readFile(join(dir, "config.toml"), "utf8")).toBe(original);
 });
 
+test("setCodexWorkspaceTrust appends a new entry, keeping the file's comments and order", async () => {
+  // It now also writes the user's own ~/.codex/config.toml, which a rewrite
+  // through the TOML serialiser would strip of every comment.
+  const dir = await mkdtemp(join(tmpdir(), "mu-ctrust-"));
+  const original =
+    '# my settings\nmodel = "gpt-5" # pinned\n\n[projects."/other"]\ntrust_level = "trusted"';
+  await writeFile(join(dir, "config.toml"), original);
+  await setCodexWorkspaceTrust(dir, "/work/thing");
+  const raw = await readFile(join(dir, "config.toml"), "utf8");
+  expect(raw.startsWith(original + "\n")).toBe(true);
+  const data: any = TOML.parse(raw);
+  expect(data.projects["/work/thing"].trust_level).toBe("trusted");
+  expect(data.projects["/other"].trust_level).toBe("trusted");
+});
+
+test("setCodexWorkspaceTrust rewrites rather than appends when projects is an inline table", async () => {
+  // A `[projects."…"]` header after `projects = {…}` redefines the table, a
+  // TOML error that would make Codex refuse the whole file.
+  const dir = await mkdtemp(join(tmpdir(), "mu-ctrust-"));
+  await writeFile(
+    join(dir, "config.toml"),
+    'projects = { "/other" = { trust_level = "trusted" } }\n',
+  );
+  await setCodexWorkspaceTrust(dir, "/work/thing");
+  const data: any = TOML.parse(
+    await readFile(join(dir, "config.toml"), "utf8"),
+  );
+  expect(data.projects["/other"].trust_level).toBe("trusted");
+  expect(data.projects["/work/thing"].trust_level).toBe("trusted");
+});
+
 test("setCodexWorkspaceTrust rejects a config.toml it cannot read or parse", async () => {
   const broken = await mkdtemp(join(tmpdir(), "mu-ctrust-"));
   await writeFile(join(broken, "config.toml"), "not = = toml");
