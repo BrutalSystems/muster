@@ -1,7 +1,14 @@
 import { test, expect } from "vitest";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { fixture, lines } from "./helpers.js";
 import { asSession, asTask } from "./narrow.js";
@@ -11,7 +18,7 @@ import { Registry } from "../src/registry.js";
 import { PtyHost } from "../src/hosts/pty.js";
 import { TmuxHost } from "../src/hosts/tmux.js";
 import { delay, groupAlive, processRef } from "../src/identity/processes.js";
-import { onExitEnv, runOnExitCommand } from "../src/on-exit.js";
+import { onExitEnv, prepareOnExit, runOnExitCommand } from "../src/on-exit.js";
 import { asksForHelp } from "../src/cli-options.js";
 import { waitSeconds } from "../src/duration.js";
 
@@ -432,6 +439,46 @@ test("a removed --on-exit directory falls back to HOME, logged before the claim 
     await m.close();
   }
 }, 20000);
+
+/**
+ * #68 item 3: a directory that exists but cannot be entered fails the spawn
+ * just as surely as one that is gone, after the claim is spent. So both the
+ * cwd and the HOME fallback are checked for search access first, and when
+ * neither can be entered the command runs in `/`.
+ */
+test("an --on-exit directory that cannot be entered falls back, and so does an unusable HOME", async () => {
+  const f = await fixture();
+  const locked = join(f.root, "locked");
+  const lockedHome = join(f.root, "locked-home");
+  await mkdir(locked);
+  await mkdir(lockedHome);
+  await chmod(locked, 0o600);
+  await chmod(lockedHome, 0o600);
+  const logPath = join(f.home, "on-exit", "x.log");
+  try {
+    const toHome = await prepareOnExit({
+      cwd: locked,
+      fallbackCwd: f.root,
+      logPath,
+    });
+    expect(toHome.cwd).toBe(f.root);
+    expect(toHome.warnings[0]).toContain(`cwd ${locked} unusable`);
+    await toHome.log?.close();
+
+    const toRoot = await prepareOnExit({
+      cwd: locked,
+      fallbackCwd: lockedHome,
+      logPath,
+    });
+    expect(toRoot.cwd).toBe("/");
+    expect(toRoot.warnings).toHaveLength(2);
+    expect(toRoot.warnings[1]).toContain(`fallback ${lockedHome} unusable`);
+    await toRoot.log?.close();
+  } finally {
+    await chmod(locked, 0o700);
+    await chmod(lockedHome, 0o700);
+  }
+});
 
 /**
  * Review finding 6: `groupAlive` counted zombies, which `processRef` never
