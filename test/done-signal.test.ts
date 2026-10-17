@@ -11,7 +11,7 @@ import { Registry } from "../src/registry.js";
 import { PtyHost } from "../src/hosts/pty.js";
 import { TmuxHost } from "../src/hosts/tmux.js";
 import { delay, groupAlive, processRef } from "../src/identity/processes.js";
-import { onExitEnv } from "../src/on-exit.js";
+import { onExitEnv, runOnExitCommand } from "../src/on-exit.js";
 import { asksForHelp } from "../src/cli-options.js";
 import { waitSeconds } from "../src/duration.js";
 
@@ -200,7 +200,7 @@ for (const runtime of ["claude", "codex", "opencode"] as const)
       // Run from where it was asked, not from the agent's folder.
       expect(field(text, "PWD")).toBe(await realpath(f.home));
       // Claimed exactly once, and recorded in the launch log.
-      expect(await new Registry(f.home).claimOnExit(task.id)).toBe(false);
+      expect(await new Registry(f.home).claimOnExit(task.id)).toBeUndefined();
       await delay(300);
       expect(
         (await lines(join(f.home, "launches.jsonl"))).filter(
@@ -594,4 +594,151 @@ test("wait --timeout exits 124 with the record as it stands", async () => {
   } finally {
     await run(process.execPath, [cli, "stop", id], { env: f.env });
   }
+}, 20000);
+
+/**
+ * #68 item 1: `stop` wrote `stopping` unconditionally and that flag won, so
+ * stopping a task that had already exited relabelled it `stopped` — and a
+ * waiter that read it afterwards was told a stop ended it.
+ */
+test("stop on a task that already exited changes nothing", async () => {
+  const f = await fixture({ MUSTER_FAKE_TASK_MS: "200" });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  try {
+    const task = asTask(
+      await m.run({ runtime: "codex", kind: "task", prompt: "x", cwd: f.root }),
+    );
+    expect((await m.wait(task.id, { timeoutMs: 8000 })).record.state).toBe(
+      "exited",
+    );
+    expect(await m.stop(task.id)).toEqual({
+      stopped: false,
+      id: task.id,
+      state: "exited",
+    });
+    const { record } = await m.wait(task.id, { timeoutMs: 1000 });
+    expect(record).toMatchObject({ state: "exited", exit_code: 0 });
+    expect((await m.list("task"))[0].state).toBe("exited");
+    const entry = (await new Registry(f.home).all())[0]!;
+    expect(entry.status).toBe("exited");
+    expect(entry.stopRequestedAt).toBeUndefined();
+  } finally {
+    await m.close();
+  }
+}, 15000);
+
+/**
+ * #68 item 1, the race: an exit recorded before the stop was asked is an
+ * exit, even when the registry had not yet noticed it.
+ */
+test("an exit file older than the stop request still reads exited", async () => {
+  const f = await fixture();
+  const registry = new Registry(f.home);
+  const { entry } = await registry.reserve(
+    { runtime: "codex", kind: "task", cwd: f.root },
+    10,
+  );
+  const exitPath = join(f.home, "exit.json");
+  await writeFile(exitPath, JSON.stringify({ code: 0, signal: null }));
+  await registry.update(entry.launchId, {
+    exitPath,
+    status: "stopped",
+    stopRequestedAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  try {
+    expect((await m.list("task"))[0].state).toBe("exited");
+  } finally {
+    await m.close();
+  }
+});
+
+/**
+ * #68 item 2: the claim committed, then a launch-log write failed and the
+ * command was never spawned — no hook, and nothing anywhere saying so.
+ */
+test("a claimed --on-exit runs and records its result when the launch log is unwritable", async () => {
+  const f = await fixture({ MUSTER_FAKE_TASK_MS: "800" });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  const out = join(f.root, "hook.txt");
+  try {
+    const task = asTask(
+      await m.run({ runtime: "codex", kind: "task", prompt: "x", cwd: f.root }),
+    );
+    await m.armOnExit(task.id, `${RECORD_HOOK(out)}; exit 3`, f.root);
+    const log = join(f.home, "launches.jsonl");
+    await rm(log);
+    await mkdir(log);
+    expect(field(await hookOutput(out), "MUSTER_STATE")).toBe("exited");
+    const registry = new Registry(f.home);
+    const deadline = Date.now() + 5000;
+    while (!(await registry.peek(task.id))?.onExitResult) {
+      if (Date.now() > deadline) throw new Error("no on-exit result recorded");
+      await delay(100);
+    }
+    const { record } = await m.wait(task.id, { timeoutMs: 1000 });
+    expect(record.on_exit).toMatchObject({
+      claimed_at: expect.any(String),
+      result: { exit_code: 3, signal: null },
+    });
+    expect((await m.list("task"))[0].on_exit.result.exit_code).toBe(3);
+  } finally {
+    await m.close();
+  }
+}, 20000);
+
+test("an --on-exit command that cannot start says why", async () => {
+  const f = await fixture();
+  const result = await runOnExitCommand({
+    command: "true",
+    cwd: join(f.root, "gone"),
+    env: f.env,
+    entry: { runtime: "codex", kind: "task" } as never,
+    record: { id: "x", state: "exited" },
+  });
+  expect(result).toMatchObject({ exit_code: null, error: expect.any(String) });
+});
+
+/**
+ * #68 item 5: hooks were armed only after a launch succeeded, so a launch
+ * that failed at readiness left its caller waiting on a signal that never
+ * came.
+ */
+test("a launch that fails still fires --on-exit with MUSTER_STATE=failed", async () => {
+  const f = await fixture({ MUSTER_FAKE_EXIT: "1" });
+  const out = join(f.root, "hook.txt");
+  const hook = RECORD_HOOK(out);
+  const failed = await run(
+    process.execPath,
+    [
+      cli,
+      "run",
+      "claude",
+      "--host",
+      "pty",
+      "--prompt",
+      "x",
+      "--cwd",
+      f.root,
+      "--on-exit",
+      hook,
+    ],
+    { env: f.env, cwd: f.root },
+  ).then(
+    () => ({ code: 0, stderr: "" }),
+    (e) => ({ code: e.code as number, stderr: e.stderr as string }),
+  );
+  expect(failed.code).toBe(1);
+  const text = await hookOutput(out);
+  expect(field(text, "MUSTER_STATE")).toBe("failed");
+  expect(field(text, "MUSTER_ERROR")).toMatch(/exited/);
+  const id = field(text, "MUSTER_ID")!;
+  const waited = await run(process.execPath, [cli, "wait", id], {
+    env: f.env,
+  });
+  expect(JSON.parse(waited.stdout)).toMatchObject({
+    id,
+    state: "failed",
+    on_exit: { claimed_at: expect.any(String) },
+  });
 }, 20000);

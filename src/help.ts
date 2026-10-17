@@ -121,7 +121,7 @@ export const COMMANDS: Command[] = [
       ],
       [
         "--on-exit COMMAND",
-        "run COMMAND with /bin/sh once the agent exits, however it ends; muster runs it, outside any sandbox, with MUSTER_ID, MUSTER_RUNTIME, MUSTER_KIND, MUSTER_STATE, MUSTER_EXIT_CODE, MUSTER_SIGNAL, MUSTER_OUTPUT and MUSTER_RECORD set",
+        "run COMMAND with /bin/sh once the agent exits, however it ends; muster runs it, outside any sandbox, with MUSTER_ID, MUSTER_RUNTIME, MUSTER_KIND, MUSTER_STATE, MUSTER_EXIT_CODE, MUSTER_SIGNAL, MUSTER_OUTPUT, MUSTER_ERROR and MUSTER_RECORD set",
       ],
       ["--format FORMAT", "json (default) or human"],
       ["-- RUNTIME_OPTIONS", "everything after -- is passed to the runtime"],
@@ -131,7 +131,7 @@ export const COMMANDS: Command[] = [
       "A sealed launch does not read your profile's or the project's settings, so it also loads no rules or CLAUDE.md.",
       "Use one of the three flags, --level, or --permissions/--sandbox; naming two is an error rather than a precedence rule.",
       "A pty launch keeps this process running and Ctrl-C stops it; a tmux launch survives this process exiting.",
-      "--on-exit: MUSTER_EXIT_CODE and MUSTER_SIGNAL are empty for a session, whose terminal keeps no exit status, and MUSTER_OUTPUT (the captured output's path) is empty for one too. The command's own output goes to ~/.muster/on-exit/<launch id>.log. It is not run if the machine restarts first.",
+      "--on-exit: MUSTER_EXIT_CODE and MUSTER_SIGNAL are empty for a session, whose terminal keeps no exit status, and MUSTER_OUTPUT (the captured output's path) is empty for one too. The command's own output goes to ~/.muster/on-exit/<launch id>.log. A launch that fails at readiness runs it too, with MUSTER_STATE=failed and MUSTER_ERROR. wait and list show it as on_exit: {claimed_at, result}. It is not run if the machine restarts first.",
     ],
     examples: [
       "muster run claude --prompt 'Review this project' --cwd .",

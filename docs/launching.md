@@ -51,27 +51,40 @@ directory you ran `muster run` in, with your environment plus:
 | `MUSTER_EXIT_CODE` | a task's exit code; empty for a session |
 | `MUSTER_SIGNAL` | the signal that ended a task, or empty |
 | `MUSTER_OUTPUT` | the path of a task's captured output; empty for a session |
+| `MUSTER_ERROR` | why the launch failed (`MUSTER_STATE=failed`), or empty |
 | `MUSTER_RECORD` | the final record as JSON, as `wait` prints it |
 
 It is claimed **at most once**, whether the agent finished, crashed, was
 killed, was stopped with `muster stop` (`MUSTER_STATE=stopped`, task or
-session) or was reaped by `--idle-timeout`/`--ttl`. One launch takes one
+session), was reaped by `--idle-timeout`/`--ttl`, or never came up at all:
+a launch that fails at readiness still runs it, with `MUSTER_STATE=failed` and
+the reason in `MUSTER_ERROR`, while `muster run` itself fails as before. A
+refusal made before anything launched (a bad option, a request key already in
+use) runs nothing, since there was no launch to end. `muster stop` on a launch
+that has already ended changes nothing: it answers `"stopped": false` with the
+state the launch ended in, and the launch keeps that state. One launch takes one
 command: a second `--on-exit` for the same launch, such as a request key sent
 twice, is refused. `--on-exit` is CLI-only: the MCP `run` tool does not take
 it, since the command runs unsandboxed as you.
 
-Its output is appended to `~/.muster/on-exit/<launch id>.log`. The launch log
-records `on_exit_armed` when the watcher starts, `on_exit_claimed` just before
-the command runs, and `on_exit` with its exit status once it has. What can
+Its output is appended to `~/.muster/on-exit/<launch id>.log`. Every record of
+a launch that has one, in `wait` and `list`, carries
+`on_exit: {claimed_at, result}`: `claimed_at` is null until the watcher claims
+the command, and `result` is null until it has finished, then
+`{finished_at, exit_code, signal}`, with `error` if the command could not start
+and `warnings` for any fallback taken. The launch log records `on_exit_armed`
+when the watcher starts, `on_exit_claimed` once the command is running, and
+`on_exit` with its exit status. The command is started before either of those
+is written, so a launch log that cannot be written cannot stop it. What can
 fail is checked before the claim is spent. A directory removed since the launch
 falls back to `$HOME`, and a log file that cannot be opened discards the
-output. Either is noted as a warning on `on_exit_claimed`.
+output.
 
 At most once, not exactly once. The watcher is an ordinary process with
 nothing to resume it. If it dies before the agent does (the machine restarts,
 someone kills it), nothing is claimed and the command never runs. If it dies
-after claiming, the launch log shows `on_exit_claimed` with no `on_exit` after
-it. Either way the launch's end is still recorded: **recover a missed
+after claiming, its record shows `on_exit` with a `claimed_at` and
+`result: null`. Either way the launch's end is still recorded: **recover a missed
 `--on-exit` with `muster wait <id>`**, which returns at once with the real end
 state. Running the command yourself then is up to you; muster does not run it
 again.

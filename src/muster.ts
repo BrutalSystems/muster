@@ -8,7 +8,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { Muster, UnknownRun, durableId } from "./run.js";
+import { Muster, UnknownRun, durableId, failedLaunchId } from "./run.js";
 import { waitSeconds } from "./duration.js";
 import { delay } from "./identity/processes.js";
 import { formatHuman, humanColorEnabled, statusText } from "./format.js";
@@ -350,13 +350,31 @@ async function main() {
         );
       const runtime = positionals[0];
       const args = positionals.slice(1);
-      const record = await muster.run({
-        runtime,
-        ...values,
-        ...(requestKey === undefined ? {} : { requestKey }),
-        ...(idleTimeout === undefined ? {} : { idleTimeout }),
-        args,
-      });
+      let record;
+      try {
+        record = await muster.run({
+          runtime,
+          ...values,
+          ...(requestKey === undefined ? {} : { requestKey }),
+          ...(idleTimeout === undefined ? {} : { idleTimeout }),
+          args,
+        });
+      } catch (e) {
+        // A launch that failed still ended, and the caller is waiting on its
+        // command to say so: armed on the failed entry, the watcher finds it
+        // already over and runs it with MUSTER_STATE=failed and MUSTER_ERROR.
+        // The launch's own error is still what this command fails with.
+        const launchId = failedLaunchId(e);
+        if (onExit !== undefined && launchId)
+          await muster
+            .armOnExit(launchId, onExit, process.cwd())
+            .catch((armError) =>
+              process.stderr.write(
+                `[muster] --on-exit not run for the failed launch: ${(armError as Error).message}\n`,
+              ),
+            );
+        throw e;
+      }
       // Armed after the launch and before the record is printed, so a caller
       // that reads the record knows the watcher exists. A launch that is up
       // but could not be armed still prints its record — the session is real

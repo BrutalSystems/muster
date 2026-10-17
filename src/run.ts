@@ -110,6 +110,7 @@ import {
 import { pollInterval } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
 import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
+import type { OnExitResult } from "./registry.js";
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
@@ -148,12 +149,70 @@ function taskHandle(entry: Entry, pid: number): TaskHandle {
  * where the answer is "not observed": a session's agent exits inside its
  * terminal host, which keeps no exit status, so only a task carries real ones.
  */
+/**
+ * Whether the `--on-exit` command was claimed and what became of it, on every
+ * record of a launch that has one: a claim with no result is a watcher that
+ * died mid-command, and the only place that shows is here.
+ */
+function onExitView(e: Entry): { on_exit?: Record<string, unknown> } {
+  if (!e.onExit) return {};
+  return {
+    on_exit: {
+      claimed_at: e.onExitFiredAt ?? null,
+      result: e.onExitResult ?? null,
+    },
+  };
+}
 function finalRecord(record: Record<string, any>): Record<string, any> {
   return {
     ...record,
     exit_code: record.exit_code ?? null,
     signal: record.signal ?? null,
   };
+}
+/**
+ * A task's exit file, and when it was written: undefined until it holds a
+ * record. Only a record that parses counts — a file that exists but cannot be
+ * read as one is never the end, whatever wrote it. The time is the file's,
+ * which the worker publishes by rename, so it is when the exit was recorded.
+ */
+async function readExit(path: string | undefined): Promise<
+  | {
+      code: number | null;
+      signal: string | null;
+      error?: string;
+      at: number;
+    }
+  | undefined
+> {
+  if (!path) return undefined;
+  try {
+    const [text, info] = await Promise.all([
+      readFile(path, "utf8"),
+      stat(path),
+    ]);
+    const exit = JSON.parse(text);
+    if (exit && typeof exit === "object" && "code" in exit)
+      return { ...exit, at: info.mtimeMs };
+  } catch {}
+  return undefined;
+}
+/** Whether a stop, not the agent, ended a launch with this exit record. */
+function endedByStop(entry: Entry, exit: { at: number } | undefined): boolean {
+  if (!entry.stopRequestedAt) return false;
+  return !exit || exit.at >= Date.parse(entry.stopRequestedAt);
+}
+const FAILED_LAUNCH = Symbol("muster.failedLaunch");
+/**
+ * The launch a failed `run` had reserved, so the CLI can still fire its
+ * `--on-exit` for it. Undefined for a refusal made before anything was
+ * reserved — a bad option, or a request key already in use — which is not a
+ * launch that ended and must not be reported as one.
+ */
+export function failedLaunchId(e: unknown): string | undefined {
+  return e && typeof e === "object"
+    ? (e as { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH]
+    : undefined;
 }
 function configHomeVar(
   runtime: Runtime,
@@ -1376,6 +1435,8 @@ export class Muster {
         deadline,
       });
     } catch (e) {
+      if (e && typeof e === "object")
+        (e as { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH] = entry.launchId;
       await this.stopEntry(entry).catch(() => {});
       const message = (e as Error).message;
       await this.registry.update(entry.launchId, {
@@ -1610,11 +1671,28 @@ export class Muster {
     // Recorded before the kill: any transaction that sees the processes gone
     // before the write below lands would otherwise sweep the entry to
     // `exited`, and a waiter would report a stop as the agent ending itself.
-    await this.registry.update(entry.launchId, { stopping: true });
-    await this.stopEntry(entry);
-    await this.registry.update(entry.launchId, { status: "stopped" });
-    await this.log.write({ event: "stopped", launch_id: entry.launchId });
-    return { stopped: true, id: entry.id };
+    // A launch that has already ended is left as it ended: relabelling an
+    // exited task `stopped` would tell its waiter the wrong thing.
+    const requested = await this.registry.requestStop(entry.launchId, (e) =>
+      this.ended(e),
+    );
+    if (!requested) {
+      const final = (await this.registry.peek(entry.launchId)) ?? entry;
+      return { stopped: false, id: entry.id, state: final.status };
+    }
+    await this.stopEntry(requested);
+    // The agent may have exited on its own between the check and the kill;
+    // an exit recorded before the stop was asked is still an exit.
+    const exit =
+      requested.kind === "task"
+        ? await readExit(requested.exitPath)
+        : undefined;
+    const status = endedByStop(requested, exit) ? "stopped" : "exited";
+    await this.registry.update(entry.launchId, { status });
+    await this.log.write({ event: status, launch_id: entry.launchId });
+    return status === "stopped"
+      ? { stopped: true, id: entry.id }
+      : { stopped: false, id: entry.id, state: status };
   }
   /**
    * Where to look for the agent's own session registry. Two different uses of an
@@ -1756,12 +1834,10 @@ export class Muster {
         state: e.status === "running" ? (e.peer?.state ?? "idle") : e.status,
         host: e.host,
         ...(e.error ? { error: e.error } : {}),
+        ...onExitView(e),
       };
     else {
-      let exit: any;
-      try {
-        exit = JSON.parse(await readFile(e.exitPath!, "utf8"));
-      } catch {}
+      const exit = await readExit(e.exitPath);
       return {
         kind: "task",
         ...(e.mcp ? { mcp: e.mcp } : {}),
@@ -1780,11 +1856,12 @@ export class Muster {
         id: e.id,
         runtime: e.runtime,
         cwd: e.cwd,
-        // A stop wins over the exit file: the worker writes that file on the
-        // SIGTERM a stop sends, so its presence says the task ended, not why.
-        // `stopping` is recorded before the kill, so it is already there.
+        // A stop wins over an exit file written after it: the worker writes
+        // that file on the SIGTERM a stop sends, so its presence says the task
+        // ended, not why. One written before the stop was asked is an exit.
         state:
-          e.stopping && (exit || !["starting", "running"].includes(e.status))
+          (exit || !["starting", "running"].includes(e.status)) &&
+          endedByStop(e, exit)
             ? "stopped"
             : exit
               ? "exited"
@@ -1792,6 +1869,7 @@ export class Muster {
         ...(e.root ? { pid: e.root.pid } : {}),
         ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
         ...(e.error ? { error: e.error } : {}),
+        ...onExitView(e),
       };
     }
   }
@@ -1825,13 +1903,7 @@ export class Muster {
     if (!["starting", "running"].includes(entry.status)) return true;
     // A task's worker writes this the moment the agent exits, before it tears
     // down its group: the earliest signal there is, and the only exact one.
-    // Only a record that parses counts: a file that exists but cannot be read
-    // as one is never the end, whatever wrote it.
-    if (entry.kind === "task" && entry.exitPath)
-      try {
-        const exit = JSON.parse(await readFile(entry.exitPath, "utf8"));
-        if (exit && typeof exit === "object" && "code" in exit) return true;
-      } catch {}
+    if (entry.kind === "task" && (await readExit(entry.exitPath))) return true;
     if (!entry.root) return !(await isSame(entry.owner));
     if (await isSame(entry.root)) return false;
     if (
@@ -1918,16 +1990,20 @@ export class Muster {
   /**
    * The watcher's whole job: wait for the launch to end, claim the command so
    * at most one watcher runs it, and run it. Its output goes to
-   * `<home>/on-exit/<launch id>.log`, its status to the launch log.
+   * `<home>/on-exit/<launch id>.log`, its status to the registry entry (shown
+   * as `on_exit` by `wait` and `list`) and then to the launch log.
    *
    * Everything that can fail is settled before the claim — where it runs and
    * where its output goes — because a claim is spent whether or not the
-   * command then starts. `on_exit_claimed` is written between the claim and
-   * the spawn, so a command lost after its claim shows in the launch log as a
-   * claim with no `on_exit` result.
+   * command then starts. After the claim the command is spawned before any
+   * launch-log write, so a log that cannot be written cannot stop it, and its
+   * result lands in the registry first: a claim with no result there is a
+   * watcher that died mid-command, which `on_exit` shows as `result: null`.
    */
   async runOnExit(launchId: string): Promise<number | null> {
     const { record } = await this.wait(launchId);
+    // The hook is told how the launch ended, not about itself.
+    const { on_exit: _, ...hookRecord } = record;
     const armed = (await this.registry.peek(launchId))?.onExit;
     if (!armed) return null;
     const prepared = await prepareOnExit({
@@ -1936,29 +2012,51 @@ export class Muster {
       logPath: join(this.home, "on-exit", `${launchId}.log`),
     });
     try {
-      if (!(await this.registry.claimOnExit(launchId))) return null;
-      const entry = (await this.registry.peek(launchId))!;
-      await this.log.write({
-        event: "on_exit_claimed",
-        launch_id: launchId,
-        state: record.state,
-        ...(prepared.warnings.length ? { warnings: prepared.warnings } : {}),
-      });
-      const code = await runOnExitCommand({
-        command: entry.onExit!.command,
-        cwd: prepared.cwd,
-        env: this.sourceEnv,
-        entry,
-        record,
-        log: prepared.log,
-      });
-      await this.log.write({
-        event: "on_exit",
-        launch_id: launchId,
-        state: record.state,
-        exit_code: code,
-      });
-      return code;
+      const entry = await this.registry.claimOnExit(launchId);
+      if (!entry) return null;
+      let result: OnExitResult;
+      try {
+        const outcome = await runOnExitCommand({
+          command: entry.onExit!.command,
+          cwd: prepared.cwd,
+          env: this.sourceEnv,
+          entry,
+          record: hookRecord,
+          log: prepared.log,
+          onSpawn: () =>
+            void this.log
+              .write({
+                event: "on_exit_claimed",
+                launch_id: launchId,
+                state: record.state,
+                ...(prepared.warnings.length
+                  ? { warnings: prepared.warnings }
+                  : {}),
+              })
+              .catch(() => {}),
+        });
+        result = { finished_at: new Date().toISOString(), ...outcome };
+      } catch (e) {
+        result = {
+          finished_at: new Date().toISOString(),
+          exit_code: null,
+          signal: null,
+          error: (e as Error).message,
+        };
+      }
+      if (prepared.warnings.length) result.warnings = prepared.warnings;
+      await this.registry.update(launchId, { onExitResult: result });
+      await this.log
+        .write({
+          event: "on_exit",
+          launch_id: launchId,
+          state: record.state,
+          exit_code: result.exit_code,
+          ...(result.signal ? { signal: result.signal } : {}),
+          ...(result.error ? { error: result.error } : {}),
+        })
+        .catch(() => {});
+      return result.exit_code;
     } finally {
       await prepared.log?.close();
     }

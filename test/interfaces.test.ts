@@ -291,8 +291,12 @@ test("CLI human run/list/stop works while JSON stays the default", async () => {
     expect((await invoke("stop", id!, "--format", "human")).stdout).toBe(
       `Stopped ${id}.\n`,
     );
+    // Already stopped, so the second stop changes nothing and says so.
     expect((await invoke("stop", id!, "--format", "json")).stdout).toBe(
-      JSON.stringify({ stopped: true, id }) + "\n",
+      JSON.stringify({ stopped: false, id, state: "stopped" }) + "\n",
+    );
+    expect((await invoke("stop", id!, "--format", "human")).stdout).toBe(
+      `Not stopped: ${id} had already stopped.\n`,
     );
   } finally {
     if (id) await invoke("stop", id);

@@ -101,10 +101,29 @@ export type Entry = Partial<LaunchPermissions> & {
    * refused rather than silently replacing the first.
    */
   onExit?: { command: string; cwd: string };
-  /** `stop` has begun. A process found gone after this was stopped, not exited. */
-  stopping?: true;
+  /**
+   * When `stop` was asked for a launch that had not yet ended. A process found
+   * gone after this was stopped, not exited. Never set on a launch that had
+   * already ended: see `requestStop`.
+   */
+  stopRequestedAt?: string;
   /** When the `--on-exit` command was claimed. Set once; see `claimOnExit`. */
   onExitFiredAt?: string;
+  /**
+   * What became of the claimed `--on-exit` command: its status, or why it could
+   * not run. Absent beside `onExitFiredAt` means the watcher died between the
+   * claim and the end of the command, which is itself the evidence.
+   */
+  onExitResult?: OnExitResult;
+};
+export type OnExitResult = {
+  finished_at: string;
+  exit_code: number | null;
+  signal: string | null;
+  /** Why the command could not start, or could not be waited on. */
+  error?: string;
+  /** Fallbacks taken to run it at all: a removed cwd, an unwritable log. */
+  warnings?: string[];
 };
 /**
  * A request key arrived again with different parameters. Distinct from a launch
@@ -219,7 +238,7 @@ export class Registry {
             ) &&
             !(entry.group && (await groupAlive(entry.group)))
           )
-            entry.status = entry.stopping ? "stopped" : "exited";
+            entry.status = entry.stopRequestedAt ? "stopped" : "exited";
         }
       }
       const result = await fn(entries);
@@ -362,12 +381,31 @@ export class Registry {
    * so two watchers racing over the same exit cannot both run the command.
    * At most, not exactly: a watcher that dies after claiming runs nothing.
    */
-  async claimOnExit(launchId: string): Promise<boolean> {
+  async claimOnExit(launchId: string): Promise<Entry | undefined> {
     return this.transaction(async (entries) => {
       const entry = entries.find((e) => e.launchId === launchId);
-      if (!entry?.onExit || entry.onExitFiredAt) return false;
+      if (!entry?.onExit || entry.onExitFiredAt) return undefined;
       entry.onExitFiredAt = new Date().toISOString();
-      return true;
+      return { ...entry };
+    });
+  }
+  /**
+   * Records that `stop` was asked, unless the launch has already ended, in
+   * which case nothing changes and undefined is returned: stopping a finished
+   * launch must not rewrite how it finished. `ended` is asked inside the
+   * transaction, after its sweep, so a process that vanished is already
+   * `exited` by the time it looks.
+   */
+  async requestStop(
+    launchId: string,
+    ended: (entry: Entry) => Promise<boolean>,
+  ): Promise<Entry | undefined> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === launchId);
+      if (!entry) throw new Error(`Unknown launch ${launchId}`);
+      if (await ended(entry)) return undefined;
+      entry.stopRequestedAt ??= new Date().toISOString();
+      return { ...entry };
     });
   }
   /**

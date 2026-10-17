@@ -27,8 +27,11 @@ muster.
   reap. muster runs
   it, outside the agent's sandbox, with `MUSTER_ID`, `MUSTER_RUNTIME`,
   `MUSTER_KIND`, `MUSTER_STATE`, `MUSTER_EXIT_CODE`, `MUSTER_SIGNAL`,
-  `MUSTER_OUTPUT` (a task's output file) and `MUSTER_RECORD` set. It is
-  CLI-only. See [How a launch runs](docs/launching.md#knowing-when-a-launch-has-ended).
+  `MUSTER_OUTPUT` (a task's output file), `MUSTER_ERROR` and
+  `MUSTER_RECORD` set. A launch that fails at readiness runs it too, with
+  `MUSTER_STATE=failed`. `wait` and `list` show whether it was claimed and how
+  it ended as `on_exit: {claimed_at, result}`, and a launch log that cannot be
+  written no longer keeps a claimed command from running. It is CLI-only. See [How a launch runs](docs/launching.md#knowing-when-a-launch-has-ended).
 - **`--help` works anywhere among a command's flags**, so
   `muster run codex --help` prints run's usage instead of "Unknown option". An
   unknown option now points at `muster <command> --help`.
@@ -36,7 +39,9 @@ muster.
   `exited`.** For a session, a listing that ran between the kill and the
   status write used to record the stop as the agent exiting on its own. For a
   task, the exit file the worker writes on the stop's SIGTERM used to win
-  outright.
+  outright. And `muster stop` on a launch that has already ended changes
+  nothing: it answers `"stopped": false` with the state the launch ended in,
+  rather than relabelling an exited task `stopped`.
 - **A task's exit file is published atomically**, so a reader can no longer
   find it created but empty.
 - **A process group holding only a zombie counts as ended**, as a zombie

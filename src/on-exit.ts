@@ -31,6 +31,8 @@ export function onExitEnv(
     // environment has a size limit that would fail the command outright.
     MUSTER_OUTPUT:
       entry.kind === "task" && entry.outputPath ? entry.outputPath : "",
+    // Why a launch failed before it was ever up (`MUSTER_STATE=failed`).
+    MUSTER_ERROR: record.error ? String(record.error) : "",
     MUSTER_RECORD: JSON.stringify(record),
   };
 }
@@ -68,7 +70,11 @@ export async function prepareOnExit(opts: {
   }
 }
 
-/** Runs `command` through `/bin/sh -c`, resolving to its exit code. */
+/**
+ * Runs `command` through `/bin/sh -c`, resolving to how it ended, or to why it
+ * never started. `onSpawn` is called once the shell is running, so whatever it
+ * does cannot keep the command from starting.
+ */
 export async function runOnExitCommand(opts: {
   command: string;
   cwd: string;
@@ -76,15 +82,25 @@ export async function runOnExitCommand(opts: {
   entry: Entry;
   record: Record<string, any>;
   log?: FileHandle;
-}): Promise<number | null> {
+  onSpawn?: () => void;
+}): Promise<{
+  exit_code: number | null;
+  signal: string | null;
+  error?: string;
+}> {
   const out = opts.log?.fd ?? "ignore";
-  return new Promise<number | null>((resolve) => {
+  return new Promise((resolve) => {
     const child = spawn("/bin/sh", ["-c", opts.command], {
       cwd: opts.cwd,
       env: { ...opts.env, ...onExitEnv(opts.entry, opts.record) },
       stdio: ["ignore", out, out],
     });
-    child.once("error", () => resolve(null));
-    child.once("exit", (code) => resolve(code));
+    child.once("spawn", () => opts.onSpawn?.());
+    child.once("error", (e) =>
+      resolve({ exit_code: null, signal: null, error: e.message }),
+    );
+    child.once("exit", (code, signal) =>
+      resolve({ exit_code: code, signal: signal ?? null }),
+    );
   });
 }
