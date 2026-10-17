@@ -40,8 +40,9 @@ muster.
   status write used to record the stop as the agent exiting on its own. For a
   task, the exit file the worker writes on the stop's SIGTERM used to win
   outright. And `muster stop` on a launch that has already ended changes
-  nothing: it answers `"stopped": false` with the state the launch ended in,
-  rather than relabelling an exited task `stopped`.
+  nothing: it answers `{"stopped": false, "id", "state"}`, with the state the
+  launch ended in, rather than relabelling an exited task `stopped`. Callers
+  that read only `stopped` see no change.
 - **A task's exit file is published atomically**, so a reader can no longer
   find it created but empty.
 - **A process group holding only a zombie counts as ended**, as a zombie
