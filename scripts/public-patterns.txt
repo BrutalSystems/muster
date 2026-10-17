@@ -6,7 +6,7 @@
 # in a private terms file outside the repo (see scripts/check-public.sh).
 
 # Personal home directories
-/(Users|home)/[a-z][a-z0-9._-]*([/"'`),:;[:space:]]|$)
+/(Users|home)/[a-z_][a-z0-9._-]*
 ~/[.]local/state\b
 
 # Private network addresses and internal host names

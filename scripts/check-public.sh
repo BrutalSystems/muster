@@ -2,7 +2,8 @@
 # Blocks text that should not reach a public repository: personal paths,
 # email addresses, credentials, and any terms a maintainer lists privately.
 #
-#   scripts/check-public.sh --push <remote>   pre-push hook mode; reads the
+#   scripts/check-public.sh --push <remote> [<url>]
+#                                             pre-push hook mode; reads the
 #                                             hook's ref lines on stdin
 #   scripts/check-public.sh --range <revs>    added lines and messages of the
 #                                             commits <revs> selects, e.g.
@@ -120,11 +121,14 @@ mode=${1:-}
 case "$mode" in
   --push)
     remote=${1:-origin}
+    # The hook's second argument is the URL being pushed to, which can differ
+    # from the remote's fetch URL; that is the repository to compare against.
+    dest=${2:-$remote}
     zero=0000000000000000000000000000000000000000
     # What the remote holds now, not what the remote-tracking refs last saw:
     # a stale ref could otherwise hide commits this push would publish.
-    git -C "$root" ls-remote "$remote" >"$work/remote" || {
-      echo "check-public: could not list $remote; refusing to report clean" >&2
+    git -C "$root" ls-remote "$dest" >"$work/remote" || {
+      echo "check-public: could not list $dest; refusing to report clean" >&2
       exit 2
     }
     : >"$work/known"
@@ -154,7 +158,7 @@ case "$mode" in
     add_files "$@"
     ;;
   *)
-    sed -n '2,26s/^# \{0,1\}//p' "$0" >&2
+    sed -n '2,27s/^# \{0,1\}//p' "$0" >&2
     exit 2
     ;;
 esac
