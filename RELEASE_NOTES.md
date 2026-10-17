@@ -10,6 +10,29 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+Fixes, from the #67 review (#68).
+
+- **A Codex session launches in a folder Codex has never trusted.**
+  `--options auto-approve-path` wrote trust only into a named config home, so
+  with no `CODEX_HOME` or `--identity` it did nothing. The launch then sat on
+  Codex's "Trust this folder?" dialog until "no descendant runtime identity
+  found". It now falls back to `~/.codex`, appending its entry so
+  `config.toml` keeps its comments. Claude with no `CLAUDE_CONFIG_DIR` is
+  unchanged.
+- **`muster run codex` for a session exits** once it has printed its record.
+  A `codex app-server` child used for readiness kept it alive.
+- **The Claude trust diagnostic no longer blames trust for a plain timeout.**
+  It checked only the exact launch directory, so every worktree and
+  subdirectory of a trusted repo was reported as untrusted. It now follows
+  Claude's own rule: the directory, any parent up to the git repo's top level,
+  or the repo's trust key. With no `CLAUDE_CONFIG_DIR` it reads
+  `~/.claude.json`, which is where Claude keeps that file.
+- **`--on-exit` checks that its directory can be entered**, not only that it
+  exists. It also checks the HOME fallback, and runs in `/` when neither can
+  be entered. Both checks happen before the command is claimed.
+
 ## 3.1.0 — 2026-10-17
 
 **muster now tells you when a launch has finished, for any runtime.** A
