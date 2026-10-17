@@ -363,6 +363,44 @@ test("an exit file that does not parse is not the end", async () => {
 }, 15000);
 
 /**
+ * #68 item 4: `view()` took any JSON that parsed as the exit record, while
+ * `ended()` checked for a `code`. Both read through `readExit` now, so an
+ * exit file of the wrong shape is no more an exit in `list` than in `wait`.
+ */
+test("list does not read an exit file of the wrong shape as an exit", async () => {
+  const f = await fixture();
+  const registry = new Registry(f.home);
+  const { entry } = await registry.reserve(
+    { runtime: "codex", kind: "task", cwd: f.root },
+    10,
+  );
+  const exitPath = join(f.root, "exit.json");
+  // This test process stands in for a live task worker.
+  await registry.update(entry.launchId, {
+    status: "running",
+    root: (await processRef(process.pid))!,
+    exitPath,
+    outputPath: join(f.root, "output.txt"),
+  });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  try {
+    for (const bad of ['{"signal":null}', "true", "[0]", '"exited"', "{"]) {
+      await writeFile(exitPath, bad);
+      const [row] = await m.list("task");
+      expect(row, bad).toMatchObject({ id: entry.launchId, state: "running" });
+      expect(row, bad).not.toHaveProperty("exit_code");
+    }
+    await writeFile(exitPath, '{"code":3,"signal":null}');
+    expect((await m.list("task"))[0]).toMatchObject({
+      state: "exited",
+      exit_code: 3,
+    });
+  } finally {
+    await m.close();
+  }
+}, 15000);
+
+/**
  * Review finding 4: the CLI armed a session by its name, and a name resolves
  * only among running sessions, so one that ended before arming lost its hook.
  * Armed by its durable id it still gets it, at once.
@@ -754,7 +792,9 @@ test("an --on-exit command that cannot start says why", async () => {
 test("a launch that fails still fires --on-exit with MUSTER_STATE=failed", async () => {
   const f = await fixture({ MUSTER_FAKE_EXIT: "1" });
   const out = join(f.root, "hook.txt");
-  const hook = RECORD_HOOK(out);
+  // Appended, unlike the record, so a second run would show as a second line.
+  const runs = join(f.root, "runs.txt");
+  const hook = `echo ran >> ${runs}; ${RECORD_HOOK(out)}`;
   const failed = await run(
     process.execPath,
     [
@@ -788,6 +828,9 @@ test("a launch that fails still fires --on-exit with MUSTER_STATE=failed", async
     state: "failed",
     on_exit: { claimed_at: expect.any(String) },
   });
+  // Codex review of #68 item 5: ran, and ran exactly once.
+  await delay(500);
+  expect((await readFile(runs, "utf8")).trim().split("\n")).toEqual(["ran"]);
 }, 20000);
 
 /**
