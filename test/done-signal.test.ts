@@ -742,3 +742,66 @@ test("a launch that fails still fires --on-exit with MUSTER_STATE=failed", async
     on_exit: { claimed_at: expect.any(String) },
   });
 }, 20000);
+
+/**
+ * Codex review of #68 item 1: a task's exit file lands while its worker is
+ * still tearing down, and a stop in that window answered with the raw
+ * registry status, `running`, for a task that had exited.
+ */
+test("stop between a task's exit and its teardown answers exited", async () => {
+  const f = await fixture();
+  const registry = new Registry(f.home);
+  const { entry } = await registry.reserve(
+    { runtime: "codex", kind: "task", cwd: f.root },
+    10,
+  );
+  const exitPath = join(f.root, "exit.json");
+  await writeFile(exitPath, '{"code":0,"signal":null}');
+  // This test process stands in for a worker still tearing down.
+  await registry.update(entry.launchId, {
+    status: "running",
+    root: (await processRef(process.pid))!,
+    exitPath,
+    outputPath: join(f.root, "output.txt"),
+  });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  try {
+    expect(await m.stop(entry.launchId)).toEqual({
+      stopped: false,
+      id: entry.id,
+      state: "exited",
+    });
+    expect((await registry.peek(entry.launchId))?.stopRequestedAt).toBe(
+      undefined,
+    );
+  } finally {
+    await m.close();
+  }
+});
+
+/**
+ * Codex review of #68 item 1: the sweep labelled any vanished launch with a
+ * stop request `stopped`, even a task whose exit file was older than it.
+ */
+test("the registry sweep keeps an exit recorded before the stop request", async () => {
+  const f = await fixture();
+  const registry = new Registry(f.home);
+  const { entry } = await registry.reserve(
+    { runtime: "codex", kind: "task", cwd: f.root },
+    10,
+  );
+  const child = spawn(process.execPath, ["-e", "setTimeout(()=>{},200)"]);
+  const root = (await processRef(child.pid!))!;
+  await new Promise((r) => child.once("exit", r));
+  const exitPath = join(f.root, "exit.json");
+  await writeFile(exitPath, '{"code":0,"signal":null}');
+  await registry.update(entry.launchId, {
+    status: "running",
+    root,
+    exitPath,
+    stopRequestedAt: new Date(Date.now() + 60_000).toISOString(),
+  });
+  expect(
+    (await registry.all()).find((e) => e.launchId === entry.launchId)?.status,
+  ).toBe("exited");
+});

@@ -116,6 +116,20 @@ export type Entry = Partial<LaunchPermissions> & {
    */
   onExitResult?: OnExitResult;
 };
+/**
+ * Whether a vanished launch was ended by its stop: a stop was asked, and no
+ * task exit file was written before it. The file is the worker's, published
+ * by rename, so its mtime is when the exit was recorded.
+ */
+async function stoppedBeforeExit(entry: Entry): Promise<boolean> {
+  if (!entry.stopRequestedAt) return false;
+  if (entry.kind !== "task" || !entry.exitPath) return true;
+  const written = await stat(entry.exitPath).then(
+    (s) => s.mtimeMs,
+    () => undefined,
+  );
+  return written === undefined || written >= Date.parse(entry.stopRequestedAt);
+}
 export type OnExitResult = {
   finished_at: string;
   exit_code: number | null;
@@ -238,7 +252,9 @@ export class Registry {
             ) &&
             !(entry.group && (await groupAlive(entry.group)))
           )
-            entry.status = entry.stopRequestedAt ? "stopped" : "exited";
+            entry.status = (await stoppedBeforeExit(entry))
+              ? "stopped"
+              : "exited";
         }
       }
       const result = await fn(entries);

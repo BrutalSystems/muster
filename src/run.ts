@@ -1677,8 +1677,15 @@ export class Muster {
       this.ended(e),
     );
     if (!requested) {
+      // As `wait` and `list` report it, not the raw status: a task's exit
+      // file can land while its worker is still tearing down, and then the
+      // registry still says running though the task has exited.
       const final = (await this.registry.peek(entry.launchId)) ?? entry;
-      return { stopped: false, id: entry.id, state: final.status };
+      return {
+        stopped: false,
+        id: entry.id,
+        state: (await this.view(final)).state,
+      };
     }
     await this.stopEntry(requested);
     // The agent may have exited on its own between the check and the kill;

@@ -110,8 +110,8 @@ is already the default) and a loop that errors never fires. muster tells you:
 
 Both work the same for claude, codex and opencode, and for a sealed task that
 can write nothing. If the watcher dies (a reboot), the command may never run;
-`wait`/`list` show `on_exit: {claimed_at, result}`, and a claim with
-`result: null` means it died mid-way. `stop` on a launch that already ended
+`wait`/`list` show `on_exit: {claimed_at, result}`: a claim with
+`result: null` is a command still running, or a watcher that died mid-way. `stop` on a launch that already ended
 changes nothing and answers `"stopped": false`.
 `muster wait <id>` still returns the real end state at once.
 

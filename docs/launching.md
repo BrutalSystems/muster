@@ -70,7 +70,8 @@ it, since the command runs unsandboxed as you.
 Its output is appended to `~/.muster/on-exit/<launch id>.log`. Every record of
 a launch that has one, in `wait` and `list`, carries
 `on_exit: {claimed_at, result}`: `claimed_at` is null until the watcher claims
-the command, and `result` is null until it has finished, then
+the command, and `result` is null while it runs (or for good, if the watcher
+died mid-command), then
 `{finished_at, exit_code, signal}`, with `error` if the command could not start
 and `warnings` for any fallback taken. The launch log records `on_exit_armed`
 when the watcher starts, `on_exit_claimed` once the command is running, and
