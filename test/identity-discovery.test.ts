@@ -1,4 +1,6 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, mkdir, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
@@ -87,22 +89,81 @@ test("a directory the profile has accepted the trust dialog for reads as trusted
   ).resolves.toBe(true);
 });
 
-test("trust is not inherited from a trusted parent directory", async () => {
-  const home = await mkdtemp(join(tmpdir(), "mu-trust-"));
+const git = (cwd: string, ...args: string[]) =>
+  promisify(execFile)("git", ["-C", cwd, ...args]);
+/** A profile whose `.claude.json` has accepted the dialog for `trusted`. */
+async function trustProfile(trusted: string[]) {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "mu-trust-")));
   const cfg = join(home, "cfg");
   await mkdir(cfg, { recursive: true });
   await writeFile(
     join(cfg, ".claude.json"),
     JSON.stringify({
-      projects: { "/Source/arm": { hasTrustDialogAccepted: true } },
+      projects: Object.fromEntries(
+        trusted.map((k) => [k, { hasTrustDialogAccepted: true }]),
+      ),
+    }),
+  );
+  return { home, env: { HOME: home, CLAUDE_CONFIG_DIR: cfg } };
+}
+
+/**
+ * #68: Claude's dialog gate walks up to the repo's top level, so a
+ * subdirectory or a linked worktree of a trusted repo is trusted. Checking the
+ * exact directory called both untrusted, and blamed trust for a launch that
+ * had only timed out.
+ */
+test("a subdirectory and a linked worktree of a trusted repo read as trusted", async () => {
+  const { home, env } = await trustProfile([]);
+  const repo = join(home, "repo");
+  await mkdir(join(repo, "sub", "deeper"), { recursive: true });
+  await git(repo, "init", "-q");
+  await git(
+    repo,
+    "-c",
+    "user.name=t",
+    "-c",
+    "user.email=t@t",
+    "commit",
+    "-q",
+    "--allow-empty",
+    "-m",
+    "x",
+  );
+  await git(repo, "worktree", "add", "-q", join(repo, "wt"));
+  await writeFile(
+    join(home, "cfg", ".claude.json"),
+    JSON.stringify({ projects: { [repo]: { hasTrustDialogAccepted: true } } }),
+  );
+  for (const cwd of [repo, join(repo, "sub", "deeper"), join(repo, "wt")])
+    await expect(claudeWorkspaceTrusted(env, cwd), cwd).resolves.toBe(true);
+});
+
+test("a trusted parent does not reach across a repo boundary", async () => {
+  const outer = await realpath(await mkdtemp(join(tmpdir(), "mu-trust-")));
+  const repo = join(outer, "centrumx");
+  await mkdir(repo);
+  await git(repo, "init", "-q");
+  const { env } = await trustProfile([outer]);
+  await expect(claudeWorkspaceTrusted(env, repo)).resolves.toBe(false);
+  // Outside any repository the walk has no ceiling.
+  const plain = join(outer, "plain", "dir");
+  await mkdir(plain, { recursive: true });
+  await expect(claudeWorkspaceTrusted(env, plain)).resolves.toBe(true);
+});
+
+test("with no CLAUDE_CONFIG_DIR, trust is read from ~/.claude.json", async () => {
+  const home = await mkdtemp(join(tmpdir(), "mu-trust-"));
+  await mkdir(join(home, ".claude"));
+  await writeFile(
+    join(home, ".claude.json"),
+    JSON.stringify({
+      projects: { "/work/dir": { hasTrustDialogAccepted: true } },
     }),
   );
   await expect(
-    claudeWorkspaceTrusted(
-      { HOME: home, CLAUDE_CONFIG_DIR: cfg },
-      "/Source/arm/centrumx",
-    ),
-  ).resolves.toBe(false);
+    claudeWorkspaceTrusted({ HOME: home }, "/work/dir"),
+  ).resolves.toBe(true);
 });
 
 test("a profile with no .claude.json at all reads as untrusted, not as an error", async () => {
@@ -130,8 +191,9 @@ test("an untrusted directory is named in the diagnostic, with the one-time fix",
   expect(msg).toMatch("/cfg");
   expect(msg).toMatch("cd /Source/arm/centrumx && claude");
   // The cause the peer report spent two failed launches discovering: a trusted
-  // parent says nothing about the child, so the message has to say so.
-  expect(msg).toMatch(/not inherited/i);
+  // parent outside the child's repo says nothing about it, so the message has
+  // to say so.
+  expect(msg).toMatch(/only inside the same git repository/i);
 });
 
 test("a trusted directory points at the terminal without naming a screen nobody has demonstrated", () => {

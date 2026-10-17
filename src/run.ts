@@ -70,7 +70,7 @@ import {
 } from "./identity/processes.js";
 import { resolveCodex } from "./identity/codex.js";
 import {
-  claudeConfigDir,
+  claudeTrustFile,
   claudeRegistryDiagnostic,
   claudeWorkspaceTrusted,
   resolveClaude,
@@ -1317,7 +1317,7 @@ export class Muster {
       diagnostic = claudeRegistryDiagnostic(
         await claudeWorkspaceTrusted(resolveEnv, req.cwd),
         req.cwd,
-        claudeConfigDir(resolveEnv),
+        claudeTrustFile(resolveEnv),
         {
           bypassWarningPending:
             req.kind === "session" &&

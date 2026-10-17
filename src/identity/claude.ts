@@ -1,10 +1,11 @@
 /** Registry-reading mechanics vendored from Tin Can src/claude/discover.ts at
  * fbaaea5842fd4a5c86849d7f51c8e16b8683b058 (MIT). Only captured descendants are
  * read, rather than scanning and diffing live sessions. */
-import { readFile, access } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, access, realpath } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { descendants } from "./processes.js";
+import { command, descendants } from "./processes.js";
+import { workspaceTrustKey } from "./workspace-key.js";
 export type ClaudeIdentity = {
   id: string;
   pid: number;
@@ -23,20 +24,63 @@ export type ClaudeIdentity = {
 export function claudeSessionsDir(env: NodeJS.ProcessEnv): string {
   return join(claudeConfigDir(env), "sessions");
 }
-/** The configuration directory itself, which `claudeSessionsDir` and the
- * workspace-trust read below both hang off. Split out so the two cannot drift:
- * a trust decision read from a different directory than the one the launch
- * records its session in would describe a profile nobody is launching. */
+/** The configuration directory itself, which `claudeSessionsDir` and
+ * `claudeTrustFile` both follow. Resolved from the same CLAUDE_CONFIG_DIR so
+ * the two cannot drift: a trust decision read from a different profile than
+ * the one the launch records its session in would describe a profile nobody
+ * is launching. */
 export function claudeConfigDir(env: NodeJS.ProcessEnv): string {
   const configured = env.CLAUDE_CONFIG_DIR;
   if (typeof configured === "string" && configured.length) return configured;
   return join(env.HOME ?? homedir(), ".claude");
 }
 /**
- * Whether Claude Code has recorded an accepted workspace-trust dialog for one
- * directory, in the profile a launch would use. Trust is per-directory and is
- * NOT inherited from a parent: a trusted `/Source/arm` says nothing about
- * `/Source/arm/centrumx`, and the child still stops at the dialog.
+ * The file Claude Code keeps workspace trust in. Not inside the configuration
+ * directory by default: with no CLAUDE_CONFIG_DIR it is `~/.claude.json`,
+ * beside `~/.claude`, and only a relocated profile keeps it inside.
+ */
+export function claudeTrustFile(env: NodeJS.ProcessEnv): string {
+  const configured = env.CLAUDE_CONFIG_DIR;
+  return typeof configured === "string" && configured.length
+    ? join(configured, ".claude.json")
+    : join(env.HOME ?? homedir(), ".claude.json");
+}
+/**
+ * Every key whose accepted dialog lets a launch in `cwd` past Claude's trust
+ * dialog. The dialog gate walks up from the launch directory and stops at the
+ * git repo's top level, or walks to `/` outside a repository — so a trusted
+ * parent counts inside its own repo and never across a repo boundary. The
+ * repo's own trust key (the main checkout, for a linked worktree) is what
+ * Muster writes, so it counts too. See `workspaceTrustKey`.
+ */
+async function trustKeys(cwd: string): Promise<string[]> {
+  const resolved = await realpath(cwd).catch(() => cwd);
+  let top: string | undefined;
+  try {
+    const shown = (
+      await command(
+        "git",
+        ["-C", resolved, "rev-parse", "--show-toplevel"],
+        2000,
+      )
+    ).trim();
+    if (shown) top = await realpath(shown).catch(() => shown);
+  } catch {}
+  const keys = new Set([cwd]);
+  for (let dir = resolved; ; dir = dirname(dir)) {
+    keys.add(dir);
+    if (dir === top || dirname(dir) === dir) break;
+  }
+  keys.add(await workspaceTrustKey(resolved));
+  return [...keys];
+}
+/**
+ * Whether Claude Code would let a session in `cwd` past its workspace-trust
+ * dialog, in the profile a launch would use: an accepted dialog on the
+ * directory, on an ancestor inside the same git repo, or on the repo's trust
+ * key. Checking the exact directory alone called every worktree and every
+ * subdirectory of a trusted repo untrusted, and blamed trust for a launch that
+ * had simply timed out (#68).
  *
  * This only ever READS. Muster does not accept the dialog on the operator's
  * behalf — `setWorkspaceTrust` writes that flag into an identity copy Muster
@@ -54,18 +98,20 @@ export async function claudeWorkspaceTrusted(
 ): Promise<boolean> {
   let raw: string;
   try {
-    raw = await readFile(join(claudeConfigDir(env), ".claude.json"), "utf8");
+    raw = await readFile(claudeTrustFile(env), "utf8");
   } catch {
     return false;
   }
+  let projects: Record<string, { hasTrustDialogAccepted?: unknown }>;
   try {
-    const data = JSON.parse(raw) as {
-      projects?: Record<string, { hasTrustDialogAccepted?: unknown }>;
-    };
-    return data.projects?.[cwd]?.hasTrustDialogAccepted === true;
+    projects =
+      (JSON.parse(raw) as { projects?: typeof projects }).projects ?? {};
   } catch {
     return false;
   }
+  return (await trustKeys(cwd)).some(
+    (key) => projects[key]?.hasTrustDialogAccepted === true,
+  );
 }
 /**
  * The message a Claude launch dies with when no session ever registered.
@@ -87,15 +133,15 @@ export async function claudeWorkspaceTrusted(
 export function claudeRegistryDiagnostic(
   trusted: boolean,
   cwd: string,
-  configDir: string,
+  trustFile: string,
   opts: { bypassWarningPending?: boolean } = {},
 ): string {
   if (!trusted)
     return (
       `no Claude session registry found: workspace trust has not been ` +
-      `accepted for ${cwd} in ${configDir} — accept it once with ` +
-      `\`cd ${cwd} && claude\`, then retry (trust is per-directory and is ` +
-      `not inherited from a parent directory)`
+      `accepted for ${cwd} in ${trustFile} — accept it once with ` +
+      `\`cd ${cwd} && claude\`, then retry (a trusted parent directory ` +
+      `counts only inside the same git repository)`
     );
   if (opts.bypassWarningPending)
     return (
