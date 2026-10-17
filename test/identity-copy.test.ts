@@ -284,6 +284,31 @@ test("setCodexWorkspaceTrust rewrites rather than appends when projects is an in
   expect(data.projects["/work/thing"].trust_level).toBe("trusted");
 });
 
+test("setCodexWorkspaceTrust rewrites when an inline projects table has a quoted key", async () => {
+  // Codex review of #68: `"projects" = {}` and `'projects' = {}` are the same
+  // key as `projects = {}`, and an appended header would redefine it.
+  for (const key of ['"projects"', "'projects'"]) {
+    const dir = await mkdtemp(join(tmpdir(), "mu-ctrust-"));
+    await writeFile(join(dir, "config.toml"), `${key} = {}\n`);
+    await setCodexWorkspaceTrust(dir, "/work/thing");
+    const data: any = TOML.parse(
+      await readFile(join(dir, "config.toml"), "utf8"),
+    );
+    expect(data.projects["/work/thing"].trust_level, key).toBe("trusted");
+  }
+});
+
+test("setCodexWorkspaceTrust creates a config home that does not exist yet", async () => {
+  // Codex review of #68: with no CODEX_HOME the home is ~/.codex, which a
+  // machine that has never run Codex does not have.
+  const dir = join(await mkdtemp(join(tmpdir(), "mu-ctrust-")), ".codex");
+  await setCodexWorkspaceTrust(dir, "/work/thing");
+  const data: any = TOML.parse(
+    await readFile(join(dir, "config.toml"), "utf8"),
+  );
+  expect(data.projects["/work/thing"].trust_level).toBe("trusted");
+});
+
 test("setCodexWorkspaceTrust rejects a config.toml it cannot read or parse", async () => {
   const broken = await mkdtemp(join(tmpdir(), "mu-ctrust-"));
   await writeFile(join(broken, "config.toml"), "not = = toml");

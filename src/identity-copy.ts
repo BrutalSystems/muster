@@ -139,6 +139,14 @@ export async function setWorkspaceTrust(
   data.projects = projects;
   await writeFile(file, JSON.stringify(data), { mode: 0o600 });
 }
+function parses(text: string): boolean {
+  try {
+    TOML.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 /**
  * Set Codex's directory-trust flag for one directory, inside a copy Muster just
  * created. Codex has its own gate, unrelated to Claude's: without a
@@ -193,16 +201,18 @@ export async function setCodexWorkspaceTrust(
   // No entry yet: append one table, exactly as Codex itself does when you
   // answer its dialog. This file may be the user's own `~/.codex/config.toml`
   // (a launch with no CODEX_HOME), and re-serialising it would drop every
-  // comment and reorder every key in it. Not when `projects` is an inline
-  // table, where a second `[projects.…]` header would be a TOML error.
-  if (!(cwd in projects) && !/^\s*projects\s*=/m.test(raw ?? "")) {
+  // comment and reorder every key in it. Not when the result would not parse
+  // — `projects` written as an inline table, under any quoting of its key,
+  // which a second `[projects.…]` header would redefine.
+  if (!(cwd in projects)) {
     const lead = raw && !raw.endsWith("\n") ? "\n" : "";
-    await appendFile(
-      file,
-      `${lead}\n[projects.${JSON.stringify(cwd)}]\ntrust_level = "trusted"\n`,
-      { mode: 0o600 },
-    );
-    return;
+    const entry = `${lead}\n[projects.${JSON.stringify(cwd)}]\ntrust_level = "trusted"\n`;
+    if (parses((raw ?? "") + entry)) {
+      // ~/.codex itself may not exist on a machine that has never run Codex.
+      await mkdir(copyPath, { recursive: true, mode: 0o700 });
+      await appendFile(file, entry, { mode: 0o600 });
+      return;
+    }
   }
   projects[cwd] = { ...existing, trust_level: "trusted" };
   data.projects = projects;
