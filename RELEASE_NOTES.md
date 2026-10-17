@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.1.0 — 2026-10-17
 
 **muster now tells you when a launch has finished, for any runtime.** A
 caller that launched two Codex review tasks waited on them with a polling loop
