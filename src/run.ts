@@ -65,6 +65,7 @@ import {
   delay,
   descendants,
   ownedGroup,
+  groupAlive,
   type ProcessRef,
 } from "./identity/processes.js";
 import { resolveCodex } from "./identity/codex.js";
@@ -108,6 +109,8 @@ import {
 } from "./mcp.js";
 import { pollInterval } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
+import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
+import type { OnExitResult } from "./registry.js";
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
@@ -141,6 +144,76 @@ function taskHandle(entry: Entry, pid: number): TaskHandle {
  * as "there is no such variable" via `?? entry.identityPath` and an absent
  * value is what that idiom expects.
  */
+/**
+ * A finished record always answers the three questions a waiter has, even
+ * where the answer is "not observed": a session's agent exits inside its
+ * terminal host, which keeps no exit status, so only a task carries real ones.
+ */
+/**
+ * Whether the `--on-exit` command was claimed and what became of it, on every
+ * record of a launch that has one: a claim with no result is a watcher that
+ * died mid-command, and the only place that shows is here.
+ */
+function onExitView(e: Entry): { on_exit?: Record<string, unknown> } {
+  if (!e.onExit) return {};
+  return {
+    on_exit: {
+      claimed_at: e.onExitFiredAt ?? null,
+      result: e.onExitResult ?? null,
+    },
+  };
+}
+function finalRecord(record: Record<string, any>): Record<string, any> {
+  return {
+    ...record,
+    exit_code: record.exit_code ?? null,
+    signal: record.signal ?? null,
+  };
+}
+/**
+ * A task's exit file, and when it was written: undefined until it holds a
+ * record. Only a record that parses counts — a file that exists but cannot be
+ * read as one is never the end, whatever wrote it. The time is the file's,
+ * which the worker publishes by rename, so it is when the exit was recorded.
+ */
+async function readExit(path: string | undefined): Promise<
+  | {
+      code: number | null;
+      signal: string | null;
+      error?: string;
+      at: number;
+    }
+  | undefined
+> {
+  if (!path) return undefined;
+  try {
+    const [text, info] = await Promise.all([
+      readFile(path, "utf8"),
+      stat(path),
+    ]);
+    const exit = JSON.parse(text);
+    if (exit && typeof exit === "object" && "code" in exit)
+      return { ...exit, at: info.mtimeMs };
+  } catch {}
+  return undefined;
+}
+/** Whether a stop, not the agent, ended a launch with this exit record. */
+function endedByStop(entry: Entry, exit: { at: number } | undefined): boolean {
+  if (!entry.stopRequestedAt) return false;
+  return !exit || exit.at >= Date.parse(entry.stopRequestedAt);
+}
+const FAILED_LAUNCH = Symbol("muster.failedLaunch");
+/**
+ * The launch a failed `run` had reserved, so the CLI can still fire its
+ * `--on-exit` for it. Undefined for a refusal made before anything was
+ * reserved — a bad option, or a request key already in use — which is not a
+ * launch that ended and must not be reported as one.
+ */
+export function failedLaunchId(e: unknown): string | undefined {
+  return e && typeof e === "object"
+    ? (e as { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH]
+    : undefined;
+}
 function configHomeVar(
   runtime: Runtime,
 ): "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | undefined {
@@ -170,6 +243,32 @@ export type TaskSpec = {
   launchId: string;
   mcpConfigPath?: string;
 };
+
+/**
+ * `wait` was given an id that names no launch. A class of its own because the
+ * CLI answers it with its own exit status: a caller polling for completion must
+ * be able to tell "never existed" from "still running", or a typo waits forever.
+ */
+export class UnknownRun extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnknownRun";
+  }
+}
+
+/**
+ * The id that names a launch for as long as the registry holds it. Not a
+ * name or `canonical_id`: those resolve only among running sessions, so a
+ * session that exits between readiness and `--on-exit` being armed would no
+ * longer be found, and would lose its command.
+ */
+export function durableId(record: RunResult): string {
+  if (record.kind === "task") return record.id;
+  return record.runtime === "codex" ? record.thread_id : record.session_id;
+}
+
+/** What `wait` resolves to: the launch's record, and whether it had ended. */
+export type WaitResult = { done: boolean; record: Record<string, any> };
 
 export class Muster {
   readonly registry: Registry;
@@ -1336,6 +1435,8 @@ export class Muster {
         deadline,
       });
     } catch (e) {
+      if (e && typeof e === "object")
+        (e as { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH] = entry.launchId;
       await this.stopEntry(entry).catch(() => {});
       const message = (e as Error).message;
       await this.registry.update(entry.launchId, {
@@ -1567,10 +1668,38 @@ export class Muster {
   async stop(id: string, requester: RequesterId = LOCAL) {
     const entry = await this.find(id);
     assertMayAct(entry, requester);
-    await this.stopEntry(entry);
-    await this.registry.update(entry.launchId, { status: "stopped" });
-    await this.log.write({ event: "stopped", launch_id: entry.launchId });
-    return { stopped: true, id: entry.id };
+    // Recorded before the kill: any transaction that sees the processes gone
+    // before the write below lands would otherwise sweep the entry to
+    // `exited`, and a waiter would report a stop as the agent ending itself.
+    // A launch that has already ended is left as it ended: relabelling an
+    // exited task `stopped` would tell its waiter the wrong thing.
+    const requested = await this.registry.requestStop(entry.launchId, (e) =>
+      this.ended(e),
+    );
+    if (!requested) {
+      // As `wait` and `list` report it, not the raw status: a task's exit
+      // file can land while its worker is still tearing down, and then the
+      // registry still says running though the task has exited.
+      const final = (await this.registry.peek(entry.launchId)) ?? entry;
+      return {
+        stopped: false,
+        id: entry.id,
+        state: (await this.view(final)).state,
+      };
+    }
+    await this.stopEntry(requested);
+    // The agent may have exited on its own between the check and the kill;
+    // an exit recorded before the stop was asked is still an exit.
+    const exit =
+      requested.kind === "task"
+        ? await readExit(requested.exitPath)
+        : undefined;
+    const status = endedByStop(requested, exit) ? "stopped" : "exited";
+    await this.registry.update(entry.launchId, { status });
+    await this.log.write({ event: status, launch_id: entry.launchId });
+    return status === "stopped"
+      ? { stopped: true, id: entry.id }
+      : { stopped: false, id: entry.id, state: status };
   }
   /**
    * Where to look for the agent's own session registry. Two different uses of an
@@ -1674,68 +1803,272 @@ export class Muster {
     const result = [];
     for (const original of entries) {
       if (kind && kind !== original.kind) continue;
-      const e = await this.refreshed(original);
-      if (e.mcpConfigPath && !["starting", "running"].includes(e.status))
-        await rm(e.mcpConfigPath, { force: true });
-      if (e.identityPath && !["starting", "running"].includes(e.status))
-        await rm(e.identityPath, { recursive: true, force: true });
-      if (e.kind === "session")
-        result.push({
-          ...e.peer,
-          kind: "session",
-          ...(e.permissions
-            ? { permissions: e.permissions, sandbox: e.sandbox }
-            : {}),
-          // From the entry, not the peer: a listing must report the same fact a
-          // launch result does, and an entry predating the field has none.
-          ...(e.enforcement ? { enforcement: e.enforcement } : {}),
-          ...(e.identity ? { identity: e.identity } : {}),
-          // Absent on an entry written before the field, which is a different
-          // fact from an explicit null: that one means Muster resolved nothing
-          // and the child chose. Both are more useful than a guess.
-          ...(e.model !== undefined
-            ? { model: e.model, model_source: e.modelSource ?? null }
-            : {}),
-          ...(e.idleTimeout ? { idle_timeout: e.idleTimeout } : {}),
-          ...(e.ttl ? { ttl: e.ttl } : {}),
-          id: e.id,
-          runtime: e.peer?.runtime ?? e.runtime,
-          state: e.status === "running" ? (e.peer?.state ?? "idle") : e.status,
-          host: e.host,
-          ...(e.error ? { error: e.error } : {}),
-        });
-      else {
-        let exit: any;
-        try {
-          exit = JSON.parse(await readFile(e.exitPath!, "utf8"));
-        } catch {}
-        result.push({
-          kind: "task",
-          ...(e.mcp ? { mcp: e.mcp } : {}),
-          ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
-          ...(e.permissions
-            ? { permissions: e.permissions, sandbox: e.sandbox }
-            : {}),
-          ...(e.enforcement ? { enforcement: e.enforcement } : {}),
-          ...(e.identity ? { identity: e.identity } : {}),
-          // Absent on an entry written before the field, which is a different
-          // fact from an explicit null: that one means Muster resolved nothing
-          // and the child chose. Both are more useful than a guess.
-          ...(e.model !== undefined
-            ? { model: e.model, model_source: e.modelSource ?? null }
-            : {}),
-          id: e.id,
-          runtime: e.runtime,
-          cwd: e.cwd,
-          state: exit ? "exited" : e.status,
-          ...(e.root ? { pid: e.root.pid } : {}),
-          ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
-          ...(e.error ? { error: e.error } : {}),
-        });
-      }
+      result.push(await this.view(original));
     }
     return result;
   }
+  /**
+   * One entry as `list` reports it. Shared with `wait`, so the record a waiter
+   * is handed is the record a listing would have shown for the same launch.
+   */
+  private async view(original: Entry): Promise<Record<string, any>> {
+    const e = await this.refreshed(original);
+    if (e.mcpConfigPath && !["starting", "running"].includes(e.status))
+      await rm(e.mcpConfigPath, { force: true });
+    if (e.identityPath && !["starting", "running"].includes(e.status))
+      await rm(e.identityPath, { recursive: true, force: true });
+    if (e.kind === "session")
+      return {
+        ...e.peer,
+        kind: "session",
+        ...(e.permissions
+          ? { permissions: e.permissions, sandbox: e.sandbox }
+          : {}),
+        // From the entry, not the peer: a listing must report the same fact a
+        // launch result does, and an entry predating the field has none.
+        ...(e.enforcement ? { enforcement: e.enforcement } : {}),
+        ...(e.identity ? { identity: e.identity } : {}),
+        // Absent on an entry written before the field, which is a different
+        // fact from an explicit null: that one means Muster resolved nothing
+        // and the child chose. Both are more useful than a guess.
+        ...(e.model !== undefined
+          ? { model: e.model, model_source: e.modelSource ?? null }
+          : {}),
+        ...(e.idleTimeout ? { idle_timeout: e.idleTimeout } : {}),
+        ...(e.ttl ? { ttl: e.ttl } : {}),
+        id: e.id,
+        runtime: e.peer?.runtime ?? e.runtime,
+        state: e.status === "running" ? (e.peer?.state ?? "idle") : e.status,
+        host: e.host,
+        ...(e.error ? { error: e.error } : {}),
+        ...onExitView(e),
+      };
+    else {
+      const exit = await readExit(e.exitPath);
+      return {
+        kind: "task",
+        ...(e.mcp ? { mcp: e.mcp } : {}),
+        ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
+        ...(e.permissions
+          ? { permissions: e.permissions, sandbox: e.sandbox }
+          : {}),
+        ...(e.enforcement ? { enforcement: e.enforcement } : {}),
+        ...(e.identity ? { identity: e.identity } : {}),
+        // Absent on an entry written before the field, which is a different
+        // fact from an explicit null: that one means Muster resolved nothing
+        // and the child chose. Both are more useful than a guess.
+        ...(e.model !== undefined
+          ? { model: e.model, model_source: e.modelSource ?? null }
+          : {}),
+        id: e.id,
+        runtime: e.runtime,
+        cwd: e.cwd,
+        // A stop wins over an exit file written after it: the worker writes
+        // that file on the SIGTERM a stop sends, so its presence says the task
+        // ended, not why. One written before the stop was asked is an exit.
+        state:
+          (exit || !["starting", "running"].includes(e.status)) &&
+          endedByStop(e, exit)
+            ? "stopped"
+            : exit
+              ? "exited"
+              : e.status,
+        ...(e.root ? { pid: e.root.pid } : {}),
+        ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
+        ...(e.error ? { error: e.error } : {}),
+        ...onExitView(e),
+      };
+    }
+  }
+  /**
+   * The entry an id names, by launch id first. A task's id IS its launch id; a
+   * session's durable id replaces it at readiness, and the `--on-exit` watcher
+   * is armed with the launch id, which is the one handle that never changes.
+   */
+  private async locate(id: string): Promise<Entry> {
+    const byLaunch = (await this.registry.all()).find((e) => e.launchId === id);
+    if (byLaunch) return byLaunch;
+    try {
+      return await this.find(id);
+    } catch (e) {
+      const message = (e as Error).message;
+      // The resolver's "unknown: <every live name>" reads as a list of
+      // matches; the ambiguous case does want its candidates, so it keeps them.
+      throw new UnknownRun(
+        message.startsWith("unknown")
+          ? `no session or task matches ${JSON.stringify(id)}`
+          : message,
+      );
+    }
+  }
+  /**
+   * Whether the launch has ended, from cheap evidence about this one entry.
+   * True is provisional for a process that vanished: the caller confirms it
+   * through a transaction, whose sweep is what records `exited`.
+   */
+  private async ended(entry: Entry): Promise<boolean> {
+    if (!["starting", "running"].includes(entry.status)) return true;
+    // A task's worker writes this the moment the agent exits, before it tears
+    // down its group: the earliest signal there is, and the only exact one.
+    if (entry.kind === "task" && (await readExit(entry.exitPath))) return true;
+    if (!entry.root) return !(await isSame(entry.owner));
+    if (await isSame(entry.root)) return false;
+    if (
+      (await Promise.all((entry.descendants ?? []).map(isSame))).some(Boolean)
+    )
+      return false;
+    return !(entry.group && (await groupAlive(entry.group)));
+  }
+  /**
+   * Blocks until the launch `id` names is no longer running, or `timeoutMs`
+   * passes. An id that names nothing throws `UnknownRun` at once rather than
+   * waiting for something that will never appear.
+   *
+   * Polls one entry, lock-free, backing off to two seconds: a watcher may wait
+   * days on a long session, and a transaction per poll would take the registry
+   * lock and run `ps` for every live entry, every time.
+   */
+  async wait(
+    id: string,
+    opts: { timeoutMs?: number; pollMs?: number } = {},
+  ): Promise<WaitResult> {
+    const { launchId } = await this.locate(id);
+    const deadline =
+      opts.timeoutMs === undefined ? Infinity : Date.now() + opts.timeoutMs;
+    let interval = opts.pollMs ?? 250;
+    while (true) {
+      const peeked = await this.registry.peek(launchId);
+      if (!peeked) throw new UnknownRun(`Unknown launch ${id}`);
+      if (await this.ended(peeked)) {
+        // The transaction's sweep settles what the cheap check guessed.
+        const settled = (await this.registry.all()).find(
+          (e) => e.launchId === launchId,
+        )!;
+        if (await this.ended(settled))
+          return { done: true, record: finalRecord(await this.view(settled)) };
+      }
+      const left = deadline - Date.now();
+      if (left <= 0) return { done: false, record: await this.view(peeked) };
+      await delay(Math.min(interval, left));
+      interval = Math.min(interval * 1.5, 2000);
+    }
+  }
+  /**
+   * Records `command` against the launch and starts the detached watcher that
+   * runs it once the agent exits. The watcher is muster, outside any sandbox
+   * the agent runs in, so a sealed agent that can write nothing still produces
+   * the signal — and it fires on a crash or a kill, which a report the agent
+   * makes about itself never would.
+   *
+   * CLI only, deliberately absent from the MCP `run` schema: the command runs
+   * unsandboxed as the operator, which no MCP caller is granted.
+   */
+  async armOnExit(id: string, command: string, cwd: string): Promise<void> {
+    if (!command.trim()) throw new Error("--on-exit needs a command");
+    const entry = await this.locate(id);
+    await this.registry.armOnExit(entry.launchId, { command, cwd });
+    const watcher = spawn(
+      process.execPath,
+      [
+        // <root>/dist from src under vitest and from dist in the package
+        // alike. Same idiom as the reap-check job.
+        fileURLToPath(new URL("../dist/muster.js", import.meta.url)),
+        "on-exit-watch",
+        "--home",
+        this.home,
+        entry.launchId,
+      ],
+      // In muster's home, not the caller's directory: the command's directory
+      // is recorded on the entry, and a watcher started inside one that is
+      // later removed cannot even start Node there.
+      { detached: true, stdio: "ignore", env: this.sourceEnv, cwd: this.home },
+    );
+    await new Promise<void>((resolve, reject) => {
+      watcher.once("spawn", resolve);
+      watcher.once("error", reject);
+    });
+    watcher.unref();
+    await this.log.write({
+      event: "on_exit_armed",
+      launch_id: entry.launchId,
+      watcher_pid: watcher.pid,
+    });
+  }
+  /**
+   * The watcher's whole job: wait for the launch to end, claim the command so
+   * at most one watcher runs it, and run it. Its output goes to
+   * `<home>/on-exit/<launch id>.log`, its status to the registry entry (shown
+   * as `on_exit` by `wait` and `list`) and then to the launch log.
+   *
+   * Everything that can fail is settled before the claim — where it runs and
+   * where its output goes — because a claim is spent whether or not the
+   * command then starts. After the claim the command is spawned before any
+   * launch-log write, so a log that cannot be written cannot stop it, and its
+   * result lands in the registry first: a claim with no result there is a
+   * watcher that died mid-command, which `on_exit` shows as `result: null`.
+   */
+  async runOnExit(launchId: string): Promise<number | null> {
+    const { record } = await this.wait(launchId);
+    // The hook is told how the launch ended, not about itself.
+    const { on_exit: _, ...hookRecord } = record;
+    const armed = (await this.registry.peek(launchId))?.onExit;
+    if (!armed) return null;
+    const prepared = await prepareOnExit({
+      cwd: armed.cwd,
+      fallbackCwd: this.sourceEnv.HOME ?? homedir(),
+      logPath: join(this.home, "on-exit", `${launchId}.log`),
+    });
+    try {
+      const entry = await this.registry.claimOnExit(launchId);
+      if (!entry) return null;
+      let result: OnExitResult;
+      try {
+        const outcome = await runOnExitCommand({
+          command: entry.onExit!.command,
+          cwd: prepared.cwd,
+          env: this.sourceEnv,
+          entry,
+          record: hookRecord,
+          log: prepared.log,
+          onSpawn: () =>
+            void this.log
+              .write({
+                event: "on_exit_claimed",
+                launch_id: launchId,
+                state: record.state,
+                ...(prepared.warnings.length
+                  ? { warnings: prepared.warnings }
+                  : {}),
+              })
+              .catch(() => {}),
+        });
+        result = { finished_at: new Date().toISOString(), ...outcome };
+      } catch (e) {
+        result = {
+          finished_at: new Date().toISOString(),
+          exit_code: null,
+          signal: null,
+          error: (e as Error).message,
+        };
+      }
+      if (prepared.warnings.length) result.warnings = prepared.warnings;
+      await this.registry.update(launchId, { onExitResult: result });
+      await this.log
+        .write({
+          event: "on_exit",
+          launch_id: launchId,
+          state: record.state,
+          exit_code: result.exit_code,
+          ...(result.signal ? { signal: result.signal } : {}),
+          ...(result.error ? { error: result.error } : {}),
+        })
+        .catch(() => {});
+      return result.exit_code;
+    } finally {
+      await prepared.log?.close();
+    }
+  }
+
   async output(id: string, requester: RequesterId = LOCAL) {
     const entry = await this.find(id);
     assertMayAct(entry, requester);

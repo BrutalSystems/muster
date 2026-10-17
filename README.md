@@ -70,6 +70,10 @@ muster run claude --prompt 'Review this project' --cwd .
 muster run codex --kind task --prompt 'Summarise the failing tests' --read-only
 muster output <id>
 
+# Knowing it has finished: block on it, or have muster run a command then.
+muster wait <id> --timeout 30m
+muster run codex --kind task --prompt 'Review' --on-exit 'notify "$MUSTER_STATE"'
+
 # What is running, and stopping it.
 muster list --format human
 muster stop <id>

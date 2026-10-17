@@ -1,5 +1,5 @@
 // A per-task owner captures output and the exit result; no pools, retries or daemon.
-import { readFile, writeFile, rm, open } from "node:fs/promises";
+import { readFile, writeFile, rm, open, rename } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import {
   delay,
@@ -53,9 +53,14 @@ async function finish(
     );
   } finally {
     try {
-      await writeFile(spec.exitPath, JSON.stringify({ code, signal, error }), {
+      // Published by rename: `wait` treats this file as the task's end, and a
+      // reader that found it created but not yet written would report a
+      // finished task with no exit status.
+      const tmp = `${spec.exitPath}.tmp`;
+      await writeFile(tmp, JSON.stringify({ code, signal, error }), {
         mode: 0o600,
       });
+      await rename(tmp, spec.exitPath);
     } finally {
       await finishOwnedGroup(code ?? 1);
     }

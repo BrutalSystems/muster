@@ -56,7 +56,7 @@ muster run claude --cwd ~/src/api \
 # A one-shot task: runs headless, exits, keeps its output
 muster run codex --kind task --cwd ~/src/api --read-only \
   --prompt "Run the test suite and paste the raw failures"
-muster list --kind task            # state running -> exited, with exit_code
+muster wait <task-id> --timeout 30m  # blocks until it ends; prints state, exit_code
 muster output <task-id>            # the captured output: the only way back from a task
 
 muster list --format human         # everything, readable
@@ -89,6 +89,31 @@ carries `id` and `state: "running"`.
 **Keep the durable id.** Names change (a runtime retitles itself, a session can
 be renamed), and `canonical_id` embeds the name, so it changes with it.
 `muster stop` accepts the durable id whatever the name has become.
+
+## Knowing when it is done
+
+Needs muster 3.1.0 or later; on an older one, `muster wait --help` says so by
+printing the top-level usage. Never poll `muster list` in a loop of your own: `list` has no `--json` (JSON
+is already the default) and a loop that errors never fires. muster tells you:
+
+- **`muster wait <id> [--timeout 30m]`** — blocks, then prints the final record.
+  Exit 0 ended (read `state` and `exit_code`), 2 no such id, 124 timed out.
+  Run it in the background and you are notified when it returns.
+- **`muster run … --on-exit '<command>'`** — muster runs the command at most
+  once when the agent exits, however it ends (crash, kill, `stop`, reap, or a
+  launch that failed: `MUSTER_STATE=failed`, reason in `MUSTER_ERROR`),
+  outside the sandbox, from your cwd (or `$HOME` if that is gone). One per
+  launch; a second is refused. Env: `MUSTER_ID`, `MUSTER_RUNTIME`, `MUSTER_KIND`,
+  `MUSTER_STATE`, `MUSTER_EXIT_CODE` and `MUSTER_SIGNAL` (empty for a session),
+  `MUSTER_OUTPUT` (a task's output file), `MUSTER_RECORD` (JSON). Log:
+  `~/.muster/on-exit/<launch id>.log`. CLI only.
+
+Both work the same for claude, codex and opencode, and for a sealed task that
+can write nothing. If the watcher dies (a reboot), the command may never run;
+`wait`/`list` show `on_exit: {claimed_at, result}`: a claim with
+`result: null` is a command still running, or a watcher that died mid-way. `stop` on a launch that already ended
+changes nothing and answers `"stopped": false`.
+`muster wait <id>` still returns the real end state at once.
 
 ## Reaching and stopping a session
 

@@ -78,6 +78,9 @@ function recordHuman(record: RecordView, color: boolean): string {
           : 90;
   const id = record.id ?? record.thread_id ?? record.session_id;
   if (record.stopped === true) return `${paint("Stopped", 90)} ${clean(id)}.`;
+  // `stop` on a launch that had already ended changes nothing and says so.
+  if (record.stopped === false)
+    return `Not stopped: ${clean(id)} had already ${clean(record.state)}.`;
   // `muster title` answers with the id and the title alone, no kind.
   if (record.kind === undefined && record.title !== undefined)
     return `Titled ${clean(id)}: ${clean(record.title)}.`;

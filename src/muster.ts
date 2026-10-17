@@ -8,7 +8,8 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { Muster } from "./run.js";
+import { Muster, UnknownRun, durableId, failedLaunchId } from "./run.js";
+import { waitSeconds } from "./duration.js";
 import { delay } from "./identity/processes.js";
 import { formatHuman, humanColorEnabled, statusText } from "./format.js";
 import { checkPlugins, npmRegistry } from "./doctor.js";
@@ -30,6 +31,7 @@ import {
 } from "./mcp-install.js";
 import { normalizeOpenFlag, usesTerminalFlag } from "./guard.js";
 import { commandHelp, topLevelHelp } from "./help.js";
+import { CLI_OPTIONS, asksForHelp } from "./cli-options.js";
 import { promptForMissing, terminalReader } from "./prompt.js";
 const listSchema = z
   .object({ kind: z.enum(["session", "task"]).optional() })
@@ -94,9 +96,10 @@ async function main() {
   }
   // Recognised before parsing, not during it: the parser is strict and has no
   // `help` option, so `muster setup-identity --help` used to be answered with
-  // "Unknown option '--help'". Only in second position, so a `--help` that is
-  // some flag's value still reaches the command it was written for.
-  if ((argv[1] === "--help" || argv[1] === "-h") && commandHelp(argv[0]!)) {
+  // "Unknown option '--help'". Anywhere among the command's own flags, so
+  // `muster run codex --help` is help too; see `asksForHelp` for the `--help`
+  // that is some flag's value, which still reaches the command.
+  if (commandHelp(argv[0] ?? "") && asksForHelp(argv.slice(1))) {
     process.stdout.write(commandHelp(argv[0]!)!);
     return;
   }
@@ -247,39 +250,7 @@ async function main() {
       args: normalizeOpenFlag(argv),
       allowPositionals: true,
       strict: true,
-      options: {
-        prompt: { type: "string" },
-        cwd: { type: "string" },
-        kind: { type: "string" },
-        host: { type: "string" },
-        open: { type: "boolean" },
-        terminal: { type: "string" },
-        format: { type: "string" },
-        permissions: { type: "string" },
-        sandbox: { type: "string" },
-        level: { type: "string" },
-        "read-only": { type: "boolean" },
-        "write-here": { type: "boolean" },
-        unrestricted: { type: "boolean" },
-        mcp: { type: "string", multiple: true },
-        options: { type: "string", multiple: true },
-        "no-mcp": { type: "boolean" },
-        plugin: { type: "string", multiple: true },
-        model: { type: "string" },
-        "idle-timeout": { type: "string" },
-        ttl: { type: "string" },
-        title: { type: "string" },
-        socket: { type: "string" },
-        home: { type: "string" },
-        "stop-now": { type: "boolean" },
-        "no-plugin": { type: "boolean" },
-        "request-key": { type: "string" },
-        project: { type: "string" },
-        identity: { type: "string" },
-        agent: { type: "string" },
-        "token-env": { type: "string" },
-        interactive: { type: "boolean" },
-      },
+      options: CLI_OPTIONS,
     });
     const {
       format = "json",
@@ -293,8 +264,14 @@ async function main() {
       "read-only": readOnly,
       "write-here": writeHere,
       unrestricted,
+      "on-exit": onExit,
+      timeout,
       ...values
     } = parsed;
+    if (onExit !== undefined && command !== "run")
+      throw new Error("--on-exit applies only to run");
+    if (timeout !== undefined && command !== "wait")
+      throw new Error("--timeout applies only to wait");
     // The plain spellings of the three sealed levels. Each is a level, so the
     // existing exclusivity with --permissions/--sandbox applies unchanged once
     // it is folded into `values.level`.
@@ -329,7 +306,11 @@ async function main() {
       ["--home", homeFlag],
       ["--stop-now", stopNow],
     ] as const)
-      if (value !== undefined && command !== "reap-check")
+      if (
+        value !== undefined &&
+        command !== "reap-check" &&
+        !(name === "--home" && command === "on-exit-watch")
+      )
         throw new Error(`${name} applies only to reap-check`);
     if (requestKey !== undefined && command !== "run")
       throw new Error("--request-key applies only to run");
@@ -369,13 +350,43 @@ async function main() {
         );
       const runtime = positionals[0];
       const args = positionals.slice(1);
-      const record = await muster.run({
-        runtime,
-        ...values,
-        ...(requestKey === undefined ? {} : { requestKey }),
-        ...(idleTimeout === undefined ? {} : { idleTimeout }),
-        args,
-      });
+      let record;
+      try {
+        record = await muster.run({
+          runtime,
+          ...values,
+          ...(requestKey === undefined ? {} : { requestKey }),
+          ...(idleTimeout === undefined ? {} : { idleTimeout }),
+          args,
+        });
+      } catch (e) {
+        // A launch that failed still ended, and the caller is waiting on its
+        // command to say so: armed on the failed entry, the watcher finds it
+        // already over and runs it with MUSTER_STATE=failed and MUSTER_ERROR.
+        // The launch's own error is still what this command fails with.
+        const launchId = failedLaunchId(e);
+        if (onExit !== undefined && launchId)
+          await muster
+            .armOnExit(launchId, onExit, process.cwd())
+            .catch((armError) =>
+              process.stderr.write(
+                `[muster] --on-exit not run for the failed launch: ${(armError as Error).message}\n`,
+              ),
+            );
+        throw e;
+      }
+      // Armed after the launch and before the record is printed, so a caller
+      // that reads the record knows the watcher exists. A launch that is up
+      // but could not be armed still prints its record — the session is real
+      // and needs stopping — and then fails, because the caller asked for a
+      // signal it will not get.
+      if (onExit !== undefined)
+        try {
+          await muster.armOnExit(durableId(record), onExit, process.cwd());
+        } catch (e) {
+          print(record);
+          throw e;
+        }
       print(record);
       if (record.kind === "session" && record.host === "pty") {
         process.stderr.write(
@@ -498,6 +509,35 @@ async function main() {
         throw new Error("title requires an id and the title text");
       const { id } = idSchema.parse({ id: positionals[0] });
       print(await muster.title(id, positionals[1]!));
+    } else if (command === "wait") {
+      if (positionals.length !== 1 || Object.keys(values).length)
+        throw new Error("wait requires exactly one id");
+      const { id } = idSchema.parse({ id: positionals[0] });
+      try {
+        const { done, record } = await muster.wait(id, {
+          ...(timeout === undefined
+            ? {}
+            : { timeoutMs: waitSeconds(timeout) * 1000 }),
+        });
+        print(record as Parameters<typeof print>[0]);
+        // 124 is timeout(1)'s status, which a shell caller already tests for.
+        if (!done) process.exitCode = 124;
+      } catch (e) {
+        if (!(e instanceof UnknownRun)) throw e;
+        process.stderr.write(`[muster] ${e.message}\n`);
+        process.exitCode = 2;
+      }
+    } else if (command === "on-exit-watch") {
+      // Hidden, like reap-check: started detached by `run --on-exit`, never
+      // typed. Its own exit status is unread; the command's goes to the log.
+      if (positionals.length !== 1 || !homeFlag)
+        throw new Error("on-exit-watch requires --home and one launch id");
+      const watcher = await Muster.create({ home: homeFlag });
+      try {
+        await watcher.runOnExit(positionals[0]!);
+      } finally {
+        await watcher.close();
+      }
     } else if (command === "reap-check") {
       // Hidden: armed by muster itself as a tmux job, never typed by a person.
       // NOTE: `Muster.create()` above already ran against the REAL home before
@@ -521,6 +561,14 @@ async function main() {
   }
 }
 main().catch((e) => {
-  process.stderr.write(`[muster] ${(e as Error).message}\n`);
+  const command = process.argv[2] ?? "";
+  // parseArgs's own text explains how to pass a positional that starts with a
+  // dash, which is never what a mistyped flag meant; the flag list is.
+  const hint =
+    (e as NodeJS.ErrnoException).code === "ERR_PARSE_ARGS_UNKNOWN_OPTION" &&
+    commandHelp(command)
+      ? `\n[muster] see \`muster ${command} --help\` for its options`
+      : "";
+  process.stderr.write(`[muster] ${(e as Error).message}${hint}\n`);
   process.exitCode = 1;
 });

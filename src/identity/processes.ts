@@ -118,13 +118,19 @@ export async function groupAlive(
     const rows = (
       await command(
         "ps",
-        ["-axo", "pid=,pgid="],
+        ["-axo", "pid=,pgid=,stat="],
         Math.max(1, Math.min(1000, deadline - Date.now())),
       )
     )
       .split("\n")
-      .map((l) => l.trim().split(/\s+/).map(Number));
-    return rows.some(([pid, pgid]) => pid && pid > 1 && pgid === group);
+      .map((l) => l.trim().split(/\s+/));
+    // A zombie is not alive, as `processRef` already holds: a group left with
+    // only an unreaped zombie in it has ended, and counting it kept `wait`
+    // waiting for as long as its parent chose not to reap.
+    return rows.some(
+      ([pid, pgid, stat]) =>
+        Number(pid) > 1 && Number(pgid) === group && !stat?.startsWith("Z"),
+    );
   } catch {
     return false;
   }

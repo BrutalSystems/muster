@@ -94,6 +94,50 @@ export type Entry = Partial<LaunchPermissions> & {
   requester?: RequesterId;
   /** How strongly the containment was imposed. See src/enforcement.ts. */
   enforcement?: Enforcement;
+  /**
+   * The `--on-exit` command and the directory it was asked from. Recorded so
+   * the detached watcher that runs it learns everything from the registry, and
+   * so a second `--on-exit` for the same launch (a request key sent twice) is
+   * refused rather than silently replacing the first.
+   */
+  onExit?: { command: string; cwd: string };
+  /**
+   * When `stop` was asked for a launch that had not yet ended. A process found
+   * gone after this was stopped, not exited. Never set on a launch that had
+   * already ended: see `requestStop`.
+   */
+  stopRequestedAt?: string;
+  /** When the `--on-exit` command was claimed. Set once; see `claimOnExit`. */
+  onExitFiredAt?: string;
+  /**
+   * What became of the claimed `--on-exit` command: its status, or why it could
+   * not run. Absent beside `onExitFiredAt` means the watcher died between the
+   * claim and the end of the command, which is itself the evidence.
+   */
+  onExitResult?: OnExitResult;
+};
+/**
+ * Whether a vanished launch was ended by its stop: a stop was asked, and no
+ * task exit file was written before it. The file is the worker's, published
+ * by rename, so its mtime is when the exit was recorded.
+ */
+async function stoppedBeforeExit(entry: Entry): Promise<boolean> {
+  if (!entry.stopRequestedAt) return false;
+  if (entry.kind !== "task" || !entry.exitPath) return true;
+  const written = await stat(entry.exitPath).then(
+    (s) => s.mtimeMs,
+    () => undefined,
+  );
+  return written === undefined || written >= Date.parse(entry.stopRequestedAt);
+}
+export type OnExitResult = {
+  finished_at: string;
+  exit_code: number | null;
+  signal: string | null;
+  /** Why the command could not start, or could not be waited on. */
+  error?: string;
+  /** Fallbacks taken to run it at all: a removed cwd, an unwritable log. */
+  warnings?: string[];
 };
 /**
  * A request key arrived again with different parameters. Distinct from a launch
@@ -208,7 +252,9 @@ export class Registry {
             ) &&
             !(entry.group && (await groupAlive(entry.group)))
           )
-            entry.status = "exited";
+            entry.status = (await stoppedBeforeExit(entry))
+              ? "stopped"
+              : "exited";
         }
       }
       const result = await fn(entries);
@@ -327,6 +373,75 @@ export class Registry {
       };
       entries.push(entry);
       return { entry: { ...entry }, deduped: false };
+    });
+  }
+  /**
+   * One entry, read without the lock. Safe because every write lands by rename,
+   * so a reader sees the old file or the new one and never half of either. For
+   * polling only: it does not run the liveness sweep, so a status read here may
+   * be stale until the next transaction.
+   */
+  async peek(launchId: string): Promise<Entry | undefined> {
+    try {
+      const entries = JSON.parse(
+        await readFile(join(this.home, "registry.json"), "utf8"),
+      ) as Entry[];
+      return entries.find((e) => e.launchId === launchId);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw e;
+    }
+  }
+  /**
+   * True at most once per launch. The check and the write share a transaction,
+   * so two watchers racing over the same exit cannot both run the command.
+   * At most, not exactly: a watcher that dies after claiming runs nothing.
+   */
+  async claimOnExit(launchId: string): Promise<Entry | undefined> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === launchId);
+      if (!entry?.onExit || entry.onExitFiredAt) return undefined;
+      entry.onExitFiredAt = new Date().toISOString();
+      return { ...entry };
+    });
+  }
+  /**
+   * Records that `stop` was asked, unless the launch has already ended, in
+   * which case nothing changes and undefined is returned: stopping a finished
+   * launch must not rewrite how it finished. `ended` is asked inside the
+   * transaction, after its sweep, so a process that vanished is already
+   * `exited` by the time it looks.
+   */
+  async requestStop(
+    launchId: string,
+    ended: (entry: Entry) => Promise<boolean>,
+  ): Promise<Entry | undefined> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === launchId);
+      if (!entry) throw new Error(`Unknown launch ${launchId}`);
+      if (await ended(entry)) return undefined;
+      entry.stopRequestedAt ??= new Date().toISOString();
+      return { ...entry };
+    });
+  }
+  /**
+   * Records the `--on-exit` command, refusing one already recorded. The check
+   * and the write share a transaction: two callers handed the same launch (a
+   * request key sent twice) would otherwise both see none and both succeed,
+   * with the second command silently replacing the first.
+   */
+  async armOnExit(
+    launchId: string,
+    onExit: NonNullable<Entry["onExit"]>,
+  ): Promise<void> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === launchId);
+      if (!entry) throw new Error(`Unknown launch ${launchId}`);
+      if (entry.onExit)
+        throw new Error(
+          `launch ${entry.id} already has an --on-exit command; it is claimed at most once, so a second is refused rather than dropped`,
+        );
+      entry.onExit = onExit;
     });
   }
   async update(id: string, patch: Partial<Entry>): Promise<Entry> {
