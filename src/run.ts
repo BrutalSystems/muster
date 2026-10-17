@@ -65,6 +65,7 @@ import {
   delay,
   descendants,
   ownedGroup,
+  groupAlive,
   type ProcessRef,
 } from "./identity/processes.js";
 import { resolveCodex } from "./identity/codex.js";
@@ -108,6 +109,7 @@ import {
 } from "./mcp.js";
 import { pollInterval } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
+import { runOnExitCommand } from "./on-exit.js";
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
@@ -141,6 +143,18 @@ function taskHandle(entry: Entry, pid: number): TaskHandle {
  * as "there is no such variable" via `?? entry.identityPath` and an absent
  * value is what that idiom expects.
  */
+/**
+ * A finished record always answers the three questions a waiter has, even
+ * where the answer is "not observed": a session's agent exits inside its
+ * terminal host, which keeps no exit status, so only a task carries real ones.
+ */
+function finalRecord(record: Record<string, any>): Record<string, any> {
+  return {
+    ...record,
+    exit_code: record.exit_code ?? null,
+    signal: record.signal ?? null,
+  };
+}
 function configHomeVar(
   runtime: Runtime,
 ): "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | undefined {
@@ -170,6 +184,21 @@ export type TaskSpec = {
   launchId: string;
   mcpConfigPath?: string;
 };
+
+/**
+ * `wait` was given an id that names no launch. A class of its own because the
+ * CLI answers it with its own exit status: a caller polling for completion must
+ * be able to tell "never existed" from "still running", or a typo waits forever.
+ */
+export class UnknownRun extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnknownRun";
+  }
+}
+
+/** What `wait` resolves to: the launch's record, and whether it had ended. */
+export type WaitResult = { done: boolean; record: Record<string, any> };
 
 export class Muster {
   readonly registry: Registry;
@@ -1567,6 +1596,10 @@ export class Muster {
   async stop(id: string, requester: RequesterId = LOCAL) {
     const entry = await this.find(id);
     assertMayAct(entry, requester);
+    // Recorded before the kill: any transaction that sees the processes gone
+    // before the write below lands would otherwise sweep the entry to
+    // `exited`, and a waiter would report a stop as the agent ending itself.
+    await this.registry.update(entry.launchId, { stopping: true });
     await this.stopEntry(entry);
     await this.registry.update(entry.launchId, { status: "stopped" });
     await this.log.write({ event: "stopped", launch_id: entry.launchId });
@@ -1674,68 +1707,220 @@ export class Muster {
     const result = [];
     for (const original of entries) {
       if (kind && kind !== original.kind) continue;
-      const e = await this.refreshed(original);
-      if (e.mcpConfigPath && !["starting", "running"].includes(e.status))
-        await rm(e.mcpConfigPath, { force: true });
-      if (e.identityPath && !["starting", "running"].includes(e.status))
-        await rm(e.identityPath, { recursive: true, force: true });
-      if (e.kind === "session")
-        result.push({
-          ...e.peer,
-          kind: "session",
-          ...(e.permissions
-            ? { permissions: e.permissions, sandbox: e.sandbox }
-            : {}),
-          // From the entry, not the peer: a listing must report the same fact a
-          // launch result does, and an entry predating the field has none.
-          ...(e.enforcement ? { enforcement: e.enforcement } : {}),
-          ...(e.identity ? { identity: e.identity } : {}),
-          // Absent on an entry written before the field, which is a different
-          // fact from an explicit null: that one means Muster resolved nothing
-          // and the child chose. Both are more useful than a guess.
-          ...(e.model !== undefined
-            ? { model: e.model, model_source: e.modelSource ?? null }
-            : {}),
-          ...(e.idleTimeout ? { idle_timeout: e.idleTimeout } : {}),
-          ...(e.ttl ? { ttl: e.ttl } : {}),
-          id: e.id,
-          runtime: e.peer?.runtime ?? e.runtime,
-          state: e.status === "running" ? (e.peer?.state ?? "idle") : e.status,
-          host: e.host,
-          ...(e.error ? { error: e.error } : {}),
-        });
-      else {
-        let exit: any;
-        try {
-          exit = JSON.parse(await readFile(e.exitPath!, "utf8"));
-        } catch {}
-        result.push({
-          kind: "task",
-          ...(e.mcp ? { mcp: e.mcp } : {}),
-          ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
-          ...(e.permissions
-            ? { permissions: e.permissions, sandbox: e.sandbox }
-            : {}),
-          ...(e.enforcement ? { enforcement: e.enforcement } : {}),
-          ...(e.identity ? { identity: e.identity } : {}),
-          // Absent on an entry written before the field, which is a different
-          // fact from an explicit null: that one means Muster resolved nothing
-          // and the child chose. Both are more useful than a guess.
-          ...(e.model !== undefined
-            ? { model: e.model, model_source: e.modelSource ?? null }
-            : {}),
-          id: e.id,
-          runtime: e.runtime,
-          cwd: e.cwd,
-          state: exit ? "exited" : e.status,
-          ...(e.root ? { pid: e.root.pid } : {}),
-          ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
-          ...(e.error ? { error: e.error } : {}),
-        });
-      }
+      result.push(await this.view(original));
     }
     return result;
   }
+  /**
+   * One entry as `list` reports it. Shared with `wait`, so the record a waiter
+   * is handed is the record a listing would have shown for the same launch.
+   */
+  private async view(original: Entry): Promise<Record<string, any>> {
+    const e = await this.refreshed(original);
+    if (e.mcpConfigPath && !["starting", "running"].includes(e.status))
+      await rm(e.mcpConfigPath, { force: true });
+    if (e.identityPath && !["starting", "running"].includes(e.status))
+      await rm(e.identityPath, { recursive: true, force: true });
+    if (e.kind === "session")
+      return {
+        ...e.peer,
+        kind: "session",
+        ...(e.permissions
+          ? { permissions: e.permissions, sandbox: e.sandbox }
+          : {}),
+        // From the entry, not the peer: a listing must report the same fact a
+        // launch result does, and an entry predating the field has none.
+        ...(e.enforcement ? { enforcement: e.enforcement } : {}),
+        ...(e.identity ? { identity: e.identity } : {}),
+        // Absent on an entry written before the field, which is a different
+        // fact from an explicit null: that one means Muster resolved nothing
+        // and the child chose. Both are more useful than a guess.
+        ...(e.model !== undefined
+          ? { model: e.model, model_source: e.modelSource ?? null }
+          : {}),
+        ...(e.idleTimeout ? { idle_timeout: e.idleTimeout } : {}),
+        ...(e.ttl ? { ttl: e.ttl } : {}),
+        id: e.id,
+        runtime: e.peer?.runtime ?? e.runtime,
+        state: e.status === "running" ? (e.peer?.state ?? "idle") : e.status,
+        host: e.host,
+        ...(e.error ? { error: e.error } : {}),
+      };
+    else {
+      let exit: any;
+      try {
+        exit = JSON.parse(await readFile(e.exitPath!, "utf8"));
+      } catch {}
+      return {
+        kind: "task",
+        ...(e.mcp ? { mcp: e.mcp } : {}),
+        ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
+        ...(e.permissions
+          ? { permissions: e.permissions, sandbox: e.sandbox }
+          : {}),
+        ...(e.enforcement ? { enforcement: e.enforcement } : {}),
+        ...(e.identity ? { identity: e.identity } : {}),
+        // Absent on an entry written before the field, which is a different
+        // fact from an explicit null: that one means Muster resolved nothing
+        // and the child chose. Both are more useful than a guess.
+        ...(e.model !== undefined
+          ? { model: e.model, model_source: e.modelSource ?? null }
+          : {}),
+        id: e.id,
+        runtime: e.runtime,
+        cwd: e.cwd,
+        state: exit ? "exited" : e.status,
+        ...(e.root ? { pid: e.root.pid } : {}),
+        ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
+        ...(e.error ? { error: e.error } : {}),
+      };
+    }
+  }
+  /**
+   * The entry an id names, by launch id first. A task's id IS its launch id; a
+   * session's durable id replaces it at readiness, and the `--on-exit` watcher
+   * is armed with the launch id, which is the one handle that never changes.
+   */
+  private async locate(id: string): Promise<Entry> {
+    const byLaunch = (await this.registry.all()).find((e) => e.launchId === id);
+    if (byLaunch) return byLaunch;
+    try {
+      return await this.find(id);
+    } catch (e) {
+      const message = (e as Error).message;
+      // The resolver's "unknown: <every live name>" reads as a list of
+      // matches; the ambiguous case does want its candidates, so it keeps them.
+      throw new UnknownRun(
+        message.startsWith("unknown")
+          ? `no session or task matches ${JSON.stringify(id)}`
+          : message,
+      );
+    }
+  }
+  /**
+   * Whether the launch has ended, from cheap evidence about this one entry.
+   * True is provisional for a process that vanished: the caller confirms it
+   * through a transaction, whose sweep is what records `exited`.
+   */
+  private async ended(entry: Entry): Promise<boolean> {
+    if (!["starting", "running"].includes(entry.status)) return true;
+    // A task's worker writes this the moment the agent exits, before it tears
+    // down its group: the earliest signal there is, and the only exact one.
+    if (entry.kind === "task" && entry.exitPath)
+      try {
+        await stat(entry.exitPath);
+        return true;
+      } catch {}
+    if (!entry.root) return !(await isSame(entry.owner));
+    if (await isSame(entry.root)) return false;
+    if (
+      (await Promise.all((entry.descendants ?? []).map(isSame))).some(Boolean)
+    )
+      return false;
+    return !(entry.group && (await groupAlive(entry.group)));
+  }
+  /**
+   * Blocks until the launch `id` names is no longer running, or `timeoutMs`
+   * passes. An id that names nothing throws `UnknownRun` at once rather than
+   * waiting for something that will never appear.
+   *
+   * Polls one entry, lock-free, backing off to two seconds: a watcher may wait
+   * days on a long session, and a transaction per poll would take the registry
+   * lock and run `ps` for every live entry, every time.
+   */
+  async wait(
+    id: string,
+    opts: { timeoutMs?: number; pollMs?: number } = {},
+  ): Promise<WaitResult> {
+    const { launchId } = await this.locate(id);
+    const deadline =
+      opts.timeoutMs === undefined ? Infinity : Date.now() + opts.timeoutMs;
+    let interval = opts.pollMs ?? 250;
+    while (true) {
+      const peeked = await this.registry.peek(launchId);
+      if (!peeked) throw new UnknownRun(`Unknown launch ${id}`);
+      if (await this.ended(peeked)) {
+        // The transaction's sweep settles what the cheap check guessed.
+        const settled = (await this.registry.all()).find(
+          (e) => e.launchId === launchId,
+        )!;
+        if (await this.ended(settled))
+          return { done: true, record: finalRecord(await this.view(settled)) };
+      }
+      const left = deadline - Date.now();
+      if (left <= 0) return { done: false, record: await this.view(peeked) };
+      await delay(Math.min(interval, left));
+      interval = Math.min(interval * 1.5, 2000);
+    }
+  }
+  /**
+   * Records `command` against the launch and starts the detached watcher that
+   * runs it once the agent exits. The watcher is muster, outside any sandbox
+   * the agent runs in, so a sealed agent that can write nothing still produces
+   * the signal — and it fires on a crash or a kill, which a report the agent
+   * makes about itself never would.
+   *
+   * CLI only, deliberately absent from the MCP `run` schema: the command runs
+   * unsandboxed as the operator, which no MCP caller is granted.
+   */
+  async armOnExit(id: string, command: string, cwd: string): Promise<void> {
+    if (!command.trim()) throw new Error("--on-exit needs a command");
+    const entry = await this.locate(id);
+    if (entry.onExit)
+      throw new Error(
+        `launch ${entry.id} already has an --on-exit command; it runs once, so a second is refused rather than dropped`,
+      );
+    await this.registry.update(entry.launchId, { onExit: { command, cwd } });
+    const watcher = spawn(
+      process.execPath,
+      [
+        // <root>/dist from src under vitest and from dist in the package
+        // alike. Same idiom as the reap-check job.
+        fileURLToPath(new URL("../dist/muster.js", import.meta.url)),
+        "on-exit-watch",
+        "--home",
+        this.home,
+        entry.launchId,
+      ],
+      { detached: true, stdio: "ignore", env: this.sourceEnv, cwd },
+    );
+    await new Promise<void>((resolve, reject) => {
+      watcher.once("spawn", resolve);
+      watcher.once("error", reject);
+    });
+    watcher.unref();
+    await this.log.write({
+      event: "on_exit_armed",
+      launch_id: entry.launchId,
+      watcher_pid: watcher.pid,
+    });
+  }
+  /**
+   * The watcher's whole job: wait for the launch to end, claim the command so
+   * it runs once however many watchers there are, and run it. Its output goes
+   * to `<home>/on-exit/<launch id>.log`, its status to the launch log.
+   */
+  async runOnExit(launchId: string): Promise<number | null> {
+    const { record } = await this.wait(launchId);
+    if (!(await this.registry.claimOnExit(launchId))) return null;
+    const entry = (await this.registry.peek(launchId))!;
+    const code = await runOnExitCommand({
+      command: entry.onExit!.command,
+      cwd: entry.onExit!.cwd,
+      env: this.sourceEnv,
+      entry,
+      record,
+      logPath: join(this.home, "on-exit", `${launchId}.log`),
+    });
+    await this.log.write({
+      event: "on_exit",
+      launch_id: launchId,
+      state: record.state,
+      exit_code: code,
+    });
+    return code;
+  }
+
   async output(id: string, requester: RequesterId = LOCAL) {
     const entry = await this.find(id);
     assertMayAct(entry, requester);

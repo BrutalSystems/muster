@@ -23,6 +23,8 @@ test("every command the CLI dispatches appears in the table", () => {
   // Armed by muster itself as a tmux job and never typed by a person, so it is
   // deliberately absent from the help table. See `reapCheck` in src/reap.ts.
   dispatched.delete("reap-check");
+  // Started detached by `run --on-exit`, never typed. See `runOnExit`.
+  dispatched.delete("on-exit-watch");
   const documented = new Set(COMMANDS.map((c) => c.name));
   expect([...dispatched].filter((name) => !documented.has(name))).toEqual([]);
 });

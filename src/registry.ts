@@ -94,6 +94,17 @@ export type Entry = Partial<LaunchPermissions> & {
   requester?: RequesterId;
   /** How strongly the containment was imposed. See src/enforcement.ts. */
   enforcement?: Enforcement;
+  /**
+   * The `--on-exit` command and the directory it was asked from. Recorded so
+   * the detached watcher that runs it learns everything from the registry, and
+   * so a second `--on-exit` for the same launch (a request key sent twice) is
+   * refused rather than silently replacing the first.
+   */
+  onExit?: { command: string; cwd: string };
+  /** `stop` has begun. A process found gone after this was stopped, not exited. */
+  stopping?: true;
+  /** When the `--on-exit` command was claimed. Set once; see `claimOnExit`. */
+  onExitFiredAt?: string;
 };
 /**
  * A request key arrived again with different parameters. Distinct from a launch
@@ -208,7 +219,7 @@ export class Registry {
             ) &&
             !(entry.group && (await groupAlive(entry.group)))
           )
-            entry.status = "exited";
+            entry.status = entry.stopping ? "stopped" : "exited";
         }
       }
       const result = await fn(entries);
@@ -327,6 +338,35 @@ export class Registry {
       };
       entries.push(entry);
       return { entry: { ...entry }, deduped: false };
+    });
+  }
+  /**
+   * One entry, read without the lock. Safe because every write lands by rename,
+   * so a reader sees the old file or the new one and never half of either. For
+   * polling only: it does not run the liveness sweep, so a status read here may
+   * be stale until the next transaction.
+   */
+  async peek(launchId: string): Promise<Entry | undefined> {
+    try {
+      const entries = JSON.parse(
+        await readFile(join(this.home, "registry.json"), "utf8"),
+      ) as Entry[];
+      return entries.find((e) => e.launchId === launchId);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw e;
+    }
+  }
+  /**
+   * True exactly once per launch. The check and the write share a transaction,
+   * so two watchers racing over the same exit cannot both run the command.
+   */
+  async claimOnExit(launchId: string): Promise<boolean> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === launchId);
+      if (!entry?.onExit || entry.onExitFiredAt) return false;
+      entry.onExitFiredAt = new Date().toISOString();
+      return true;
     });
   }
   async update(id: string, patch: Partial<Entry>): Promise<Entry> {

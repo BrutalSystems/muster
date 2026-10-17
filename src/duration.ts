@@ -24,3 +24,23 @@ export function parseDuration(value: string, label: string): Duration {
     );
   return seconds;
 }
+
+/**
+ * `wait --timeout`: seconds as a bare number, which is what `timeout(1)` and
+ * shell callers write, or a duration. A lifecycle limit refuses the bare
+ * number because a wrong unit reaps a session; here the unit is the obvious
+ * one. `off` is refused: no timeout is spelled by leaving the flag out.
+ */
+export function waitSeconds(value: string): number {
+  const raw = value.trim();
+  const seconds = /^\d+$/.test(raw)
+    ? Number(raw)
+    : /^\d+[smh]$/i.test(raw)
+      ? (parseDuration(raw, "--timeout") as number)
+      : 0;
+  if (seconds <= 0)
+    throw new Error(
+      `--timeout must be seconds or a duration like 90s, 30m, 4h (got ${JSON.stringify(value)})`,
+    );
+  return seconds;
+}

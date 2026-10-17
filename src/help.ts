@@ -119,6 +119,10 @@ export const COMMANDS: Command[] = [
         "--request-key KEY",
         "name the request; sending it again returns the same launch",
       ],
+      [
+        "--on-exit COMMAND",
+        "run COMMAND with /bin/sh once the agent exits, however it ends; muster runs it, outside any sandbox, with MUSTER_ID, MUSTER_RUNTIME, MUSTER_KIND, MUSTER_STATE, MUSTER_EXIT_CODE, MUSTER_SIGNAL, MUSTER_OUTPUT and MUSTER_RECORD set",
+      ],
       ["--format FORMAT", "json (default) or human"],
       ["-- RUNTIME_OPTIONS", "everything after -- is passed to the runtime"],
     ],
@@ -127,11 +131,32 @@ export const COMMANDS: Command[] = [
       "A sealed launch does not read your profile's or the project's settings, so it also loads no rules or CLAUDE.md.",
       "Use one of the three flags, --level, or --permissions/--sandbox; naming two is an error rather than a precedence rule.",
       "A pty launch keeps this process running and Ctrl-C stops it; a tmux launch survives this process exiting.",
+      "--on-exit: MUSTER_EXIT_CODE and MUSTER_SIGNAL are empty for a session, whose terminal keeps no exit status, and MUSTER_OUTPUT (the captured output's path) is empty for one too. The command's own output goes to ~/.muster/on-exit/<launch id>.log. It is not run if the machine restarts first.",
     ],
     examples: [
       "muster run claude --prompt 'Review this project' --cwd .",
       "muster run claude --read-only --prompt 'Audit this' --cwd .",
       "muster run codex --identity work --write-here --prompt 'Ship it'",
+      "muster run codex --kind task --prompt 'Review' --on-exit 'notify.sh'",
+    ],
+  },
+  {
+    name: "wait",
+    summary: "block until a session or task has ended",
+    synopsis: "muster wait <id> [--timeout SECONDS] [--format json|human]",
+    options: [
+      [
+        "--timeout SECONDS",
+        "give up after this long: seconds, or 90s, 30m, 4h",
+      ],
+      ["--format FORMAT", "json (default) or human"],
+    ],
+    notes: [
+      "Prints the final record, with state, exit_code and signal (null for a session, whose terminal keeps no exit status). Exits 0 when it has ended, 2 for an id that names nothing, and 124 on timeout, printing the record as it stands.",
+    ],
+    examples: [
+      "muster wait 6fae755b-8f5d-4425-8ed7-69e84bfac8c5",
+      "muster wait simple-cms-46 --timeout 30m",
     ],
   },
   {

@@ -10,6 +10,31 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+**muster now tells you when a launch has finished, for any runtime.** A
+caller that launched two Codex review tasks waited on them with a polling loop
+that never fired, and reported them running for forty minutes after they had
+exited. A sealed task cannot report itself, so the signal has to come from
+muster.
+
+- **`muster wait <id> [--timeout S]`** blocks until a session or task has
+  ended and prints its final record, with `state`, `exit_code` and `signal`.
+  It exits 0 when the launch has ended, 2 for an id that names nothing, and
+  124 on timeout.
+- **`muster run … --on-exit '<command>'`** runs the command once the agent
+  exits: a clean exit, a crash, a kill, `muster stop` or a reap. muster runs
+  it, outside the agent's sandbox, with `MUSTER_ID`, `MUSTER_RUNTIME`,
+  `MUSTER_KIND`, `MUSTER_STATE`, `MUSTER_EXIT_CODE`, `MUSTER_SIGNAL`,
+  `MUSTER_OUTPUT` (a task's output file) and `MUSTER_RECORD` set. It is
+  CLI-only. See [How a launch runs](docs/launching.md#knowing-when-a-launch-has-ended).
+- **`--help` works anywhere among a command's flags**, so
+  `muster run codex --help` prints run's usage instead of "Unknown option". An
+  unknown option now points at `muster <command> --help`.
+- **A session ended with `muster stop` is reported `stopped`, never
+  `exited`.** A listing that happened to run between the kill and the status
+  write used to record the stop as the agent exiting on its own.
+
 ## 3.0.2 — 2026-10-16
 
 **A muster process that dies mid-write no longer locks every muster command

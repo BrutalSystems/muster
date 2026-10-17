@@ -14,6 +14,57 @@ looping inside it. A session with a client attached is never stopped. The limit
 applies to tmux sessions only: pty and macos-terminal sessions die with the
 process that launched them, and a task ends when its prompt does.
 
+## Knowing when a launch has ended
+
+Two ways, the same for Claude, Codex and OpenCode, sessions and tasks. Both
+come from muster, the parent process, so they work for a sealed agent that can
+write nothing, and they fire on a crash or a kill as well as a clean exit.
+
+**`muster wait <id>`** blocks until the launch is no longer running and prints
+its final record: the `list` record plus `exit_code` and `signal`.
+
+```sh
+muster wait 6fae755b-8f5d-4425-8ed7-69e84bfac8c5 --timeout 30m
+```
+
+| Exit status | Meaning |
+| ----------- | ------- |
+| 0 | it has ended; `state` says how (`exited`, `stopped`, `failed`, `unknown`) |
+| 2 | the id names nothing, so there is nothing to wait for |
+| 124 | `--timeout` passed first; the record printed is the current one |
+
+`--timeout` takes seconds (`90`) or a duration (`90s`, `30m`, `4h`). The id is
+anything `stop` accepts. A session's `exit_code` and `signal` are `null`: the
+agent exits inside its terminal host, which keeps no exit status.
+
+**`muster run … --on-exit '<command>'`** runs the command once the agent exits.
+muster starts a detached watcher that waits as `wait` does, then runs the
+command with `/bin/sh -c`, as you, outside any sandbox the agent had, from the
+directory you ran `muster run` in, with your environment plus:
+
+| Variable | Value |
+| -------- | ----- |
+| `MUSTER_ID` | the id `wait`, `output` and `stop` take: a task's id, a session's durable id |
+| `MUSTER_RUNTIME` | `claude`, `codex` or `opencode` |
+| `MUSTER_KIND` | `task` or `session` |
+| `MUSTER_STATE` | `exited`, `stopped`, `failed` or `unknown` |
+| `MUSTER_EXIT_CODE` | a task's exit code; empty for a session |
+| `MUSTER_SIGNAL` | the signal that ended a task, or empty |
+| `MUSTER_OUTPUT` | the path of a task's captured output; empty for a session |
+| `MUSTER_RECORD` | the final record as JSON, as `wait` prints it |
+
+It runs exactly once, whether the agent finished, crashed, was killed, was
+stopped with `muster stop` (`MUSTER_STATE=stopped`) or was reaped by
+`--idle-timeout`/`--ttl`. Its output is appended to
+`~/.muster/on-exit/<launch id>.log`, and an `on_exit` event with its exit code
+goes to the launch log. `--on-exit` is CLI-only: the MCP `run` tool does not
+take it, since the command runs unsandboxed as you.
+
+The watcher is an ordinary process with nothing to resume it. If it dies before
+the agent does (the machine restarts, someone kills it), the command does not
+run. The launch's end is still recorded: **recover a missed `--on-exit` with
+`muster wait <id>`**, which returns at once with the real end state.
+
 ## Terminal titles
 
 A tmux session's terminal title is the name `list` and `stop` accept, followed by
