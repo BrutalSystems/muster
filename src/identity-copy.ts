@@ -1,4 +1,10 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  copyFile,
+  mkdir,
+  readFile,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import TOML from "@iarna/toml";
 import { identityPath, type IdentityMeta } from "./identity-store.js";
@@ -133,6 +139,14 @@ export async function setWorkspaceTrust(
   data.projects = projects;
   await writeFile(file, JSON.stringify(data), { mode: 0o600 });
 }
+function parses(text: string): boolean {
+  try {
+    TOML.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 /**
  * Set Codex's directory-trust flag for one directory, inside a copy Muster just
  * created. Codex has its own gate, unrelated to Claude's: without a
@@ -151,8 +165,10 @@ export async function setWorkspaceTrust(
  * parses and is accepted, and the prompt still appears: the check reads
  * persisted config, so the entry has to be in the file.
  *
- * The user's real `~/.codex/config.toml` is never touched, for the same reason
- * `setWorkspaceTrust` leaves the live `~/.claude.json` alone.
+ * Also called on the user's own `~/.codex/config.toml`, for an
+ * `--options auto-approve-path` launch with no CODEX_HOME — the file that
+ * launch's Codex reads. That is why a new entry is appended rather than the
+ * file re-serialised.
  */
 export async function setCodexWorkspaceTrust(
   copyPath: string,
@@ -182,6 +198,22 @@ export async function setCodexWorkspaceTrust(
   const projects = (data.projects ?? {}) as Record<string, unknown>;
   const existing = (projects[cwd] ?? {}) as Record<string, unknown>;
   if (existing.trust_level === "trusted") return;
+  // No entry yet: append one table, exactly as Codex itself does when you
+  // answer its dialog. This file may be the user's own `~/.codex/config.toml`
+  // (a launch with no CODEX_HOME), and re-serialising it would drop every
+  // comment and reorder every key in it. Not when the result would not parse
+  // — `projects` written as an inline table, under any quoting of its key,
+  // which a second `[projects.…]` header would redefine.
+  if (!(cwd in projects)) {
+    const lead = raw && !raw.endsWith("\n") ? "\n" : "";
+    const entry = `${lead}\n[projects.${JSON.stringify(cwd)}]\ntrust_level = "trusted"\n`;
+    if (parses((raw ?? "") + entry)) {
+      // ~/.codex itself may not exist on a machine that has never run Codex.
+      await mkdir(copyPath, { recursive: true, mode: 0o700 });
+      await appendFile(file, entry, { mode: 0o600 });
+      return;
+    }
+  }
   projects[cwd] = { ...existing, trust_level: "trusted" };
   data.projects = projects;
   // Re-serialised rather than appended, so an entry the template already

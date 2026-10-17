@@ -70,7 +70,7 @@ import {
 } from "./identity/processes.js";
 import { resolveCodex } from "./identity/codex.js";
 import {
-  claudeConfigDir,
+  claudeTrustFile,
   claudeRegistryDiagnostic,
   claudeWorkspaceTrusted,
   resolveClaude,
@@ -212,6 +212,23 @@ const FAILED_LAUNCH = Symbol("muster.failedLaunch");
 export function failedLaunchId(e: unknown): string | undefined {
   return e && typeof e === "object"
     ? (e as { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH]
+    : undefined;
+}
+/**
+ * Where an agent keeps its trust records when no configuration home is named,
+ * from the HOME it is spawned with. Codex only: its default `config.toml` is
+ * written by Codex just when you change a setting, and its trust entry is
+ * appended without rewriting the file. Claude's default is `~/.claude.json`,
+ * which every running session rewrites continuously, and a read-modify-write
+ * there could undo theirs — so a Claude launch with no CLAUDE_CONFIG_DIR still
+ * writes nothing, as before.
+ */
+function defaultConfigHome(
+  runtime: Runtime,
+  env: Record<string, string>,
+): string | undefined {
+  return runtime === "codex"
+    ? join(env.HOME ?? homedir(), ".codex")
     : undefined;
 }
 function configHomeVar(
@@ -798,11 +815,21 @@ export class Muster {
     // Written before the agent starts and into the SAME dir the child will open.
     // An identity launch has already had its copy trusted above, so this is a
     // no-op there rather than a second write.
-    if (req.options.includes("auto-approve-path") && configHome)
-      await AGENTS[req.runtime].trustWorkspace?.(
-        configHome,
-        await workspaceTrustKey(req.cwd),
-      );
+    //
+    // With no configuration home named, the agent reads its default one, and
+    // that is where the record has to go. Skipping it — as this did — made the
+    // option a silent no-op for every Codex launch without CODEX_HOME: the
+    // launch then sat on Codex's trust dialog and timed out with "no
+    // descendant runtime identity found".
+    if (req.options.includes("auto-approve-path")) {
+      const trustHome =
+        configHome ?? defaultConfigHome(req.runtime, runtimeEnv);
+      if (trustHome)
+        await AGENTS[req.runtime].trustWorkspace?.(
+          trustHome,
+          await workspaceTrustKey(req.cwd),
+        );
+    }
     const resolveEnv = this.resolutionEnv(req.runtime, configHome);
     let bridgePath: string | undefined;
     if (req.runtime === "claude" && prepared.servers.length) {
@@ -1290,7 +1317,7 @@ export class Muster {
       diagnostic = claudeRegistryDiagnostic(
         await claudeWorkspaceTrusted(resolveEnv, req.cwd),
         req.cwd,
-        claudeConfigDir(resolveEnv),
+        claudeTrustFile(resolveEnv),
         {
           bypassWarningPending:
             req.kind === "session" &&
@@ -1450,6 +1477,11 @@ export class Muster {
         )
         .catch(() => {});
       throw e;
+    } finally {
+      // The readiness connection is a `codex app-server` child of THIS
+      // process. Left open, its pipes keep the event loop alive, and the CLI
+      // that launched a Codex session never exits after printing the record.
+      await rpc?.close();
     }
   }
   /**

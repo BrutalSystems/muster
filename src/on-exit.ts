@@ -3,7 +3,8 @@
  * Kept out of run.ts so the environment contract can be tested without a
  * launch, since that contract is what every caller's script depends on.
  */
-import { mkdir, open, stat, type FileHandle } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdir, open, stat, type FileHandle } from "node:fs/promises";
 import { dirname } from "node:path";
 import { spawn } from "node:child_process";
 import type { Entry } from "./registry.js";
@@ -38,11 +39,28 @@ export function onExitEnv(
 }
 
 /**
+ * Why a directory cannot be a command's cwd, or undefined when it can: it must
+ * be a directory and searchable, because a spawn into one that is not fails
+ * after the claim is spent. Still a check, not a lock — the directory can
+ * change between here and the spawn, and that race is left to the spawn's own
+ * error, which the result records.
+ */
+async function enterable(dir: string): Promise<string | undefined> {
+  try {
+    if (!(await stat(dir)).isDirectory()) return "not a directory";
+    await access(dir, constants.X_OK);
+    return undefined;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+/**
  * Where the command will run and where its output will go, settled before the
  * command is claimed, because a claim is spent whether or not it then starts.
  * Neither failure is allowed to cost the signal: a directory removed since the
- * launch falls back to `fallbackCwd`, and a log that cannot be opened leaves
- * the output discarded. Each fallback is reported, for the launch log.
+ * launch, or one that can no longer be entered, falls back to `fallbackCwd`
+ * (and that to `/`), and a log that cannot be opened leaves the output
+ * discarded. Each fallback is reported, for the launch log.
  */
 export async function prepareOnExit(opts: {
   cwd: string;
@@ -51,13 +69,17 @@ export async function prepareOnExit(opts: {
 }): Promise<{ cwd: string; log?: FileHandle; warnings: string[] }> {
   const warnings: string[] = [];
   let cwd = opts.cwd;
-  try {
-    if (!(await stat(cwd)).isDirectory()) throw new Error("not a directory");
-  } catch (e) {
+  const unusable = await enterable(cwd);
+  if (unusable) {
     warnings.push(
-      `cwd ${cwd} unusable (${(e as Error).message}); ran in ${opts.fallbackCwd}`,
+      `cwd ${cwd} unusable (${unusable}); ran in ${opts.fallbackCwd}`,
     );
     cwd = opts.fallbackCwd;
+    const fallback = await enterable(cwd);
+    if (fallback) {
+      warnings.push(`fallback ${cwd} unusable (${fallback}); ran in /`);
+      cwd = "/";
+    }
   }
   try {
     await mkdir(dirname(opts.logPath), { recursive: true, mode: 0o700 });
