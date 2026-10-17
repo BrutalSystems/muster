@@ -10,6 +10,21 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+Housekeeping. No change to how muster behaves.
+
+- Comments, tests and docs no longer carry example paths and names taken
+  from a real machine; the fixtures use neutral placeholders.
+- Development notes that were never meant for the published repository are
+  removed.
+- New for contributors: `scripts/check-public.sh` and a pre-push hook in
+  `.githooks/` that refuse a push containing personal paths, email addresses
+  or credentials, plus any terms listed in a private file outside the repo.
+  `npm run check:public` checks the whole tree.
+
+Earlier versions are deprecated on npm in favour of this one.
+
 ## 3.1.1 — 2026-10-17
 
 Fixes, from the #67 review (#68).

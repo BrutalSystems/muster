@@ -1,0 +1,23 @@
+# Generic patterns scripts/check-public.sh blocks in anything bound for the
+# public repo: extended regexes, matched case-insensitively, one per line.
+# Lines starting with # and blank lines are ignored.
+#
+# Only generic shapes belong here. Names specific to one maintainer's setup go
+# in a private terms file outside the repo (see scripts/check-public.sh).
+
+# Personal home directories
+/(Users|home)/[a-z][a-z0-9._-]{2,}/
+~/[.]local/state/
+
+# Email addresses
+[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}
+
+# Credentials
+AKIA[0-9A-Z]{16}
+gh[pousr]_[A-Za-z0-9]{20,}
+github_pat_[A-Za-z0-9_]{20,}
+npm_[A-Za-z0-9]{30,}
+sk-ant-[a-z]+[0-9]*-[A-Za-z0-9_-]{20,}
+sk-[A-Za-z0-9]{32,}
+xox[abprs]-[A-Za-z0-9-]{10,}
+-----BEGIN [A-Z ]*PRIVATE KEY-----

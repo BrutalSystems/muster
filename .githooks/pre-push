@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks a push whose new commits, commit messages or tags match a pattern in
+# scripts/check-public.sh. Enable with: git config core.hooksPath .githooks
+exec "$(git rev-parse --show-toplevel)/scripts/check-public.sh" --push "$1"

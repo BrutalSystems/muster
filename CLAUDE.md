@@ -60,3 +60,19 @@ the TS2353/TS2339 errors naming the new field, then watch it pass. A plan step
 that writes "Expected: FAIL" against a vitest command for a type change is
 wrong about its own gate, and a task that stops at the green vitest run has
 proved nothing.
+
+## Before pushing: the public-text check
+
+This repository and its npm package are public. `.githooks/pre-push` runs
+`scripts/check-public.sh` over every commit, commit message and tag a push
+would add, and refuses the push on a hit. Turn it on once per clone with
+`git config core.hooksPath .githooks`; `npm run check:public` checks the whole
+tree.
+
+The repo carries only generic patterns (`scripts/public-patterns.txt`: home
+paths, email addresses, credentials). Names that must never appear in the
+repo itself go in a private terms file outside it, read from
+`$PUBLIC_TERMS_FILE`, `git config public.termsFile`, or
+`~/.config/public-terms.txt`. Write commits, comments, docs, fixtures, issue
+threads and release notes for a stranger to read: no people's or clients' names,
+no personal paths, and no references to private tools or repositories.

@@ -141,7 +141,7 @@ test("a subdirectory and a linked worktree of a trusted repo read as trusted", a
 
 test("a trusted parent does not reach across a repo boundary", async () => {
   const outer = await realpath(await mkdtemp(join(tmpdir(), "mu-trust-")));
-  const repo = join(outer, "centrumx");
+  const repo = join(outer, "app");
   await mkdir(repo);
   await git(repo, "init", "-q");
   const { env } = await trustProfile([outer]);
@@ -186,10 +186,10 @@ test("a .claude.json that exists but does not parse reads as untrusted", async (
 });
 
 test("an untrusted directory is named in the diagnostic, with the one-time fix", () => {
-  const msg = claudeRegistryDiagnostic(false, "/Source/arm/centrumx", "/cfg");
-  expect(msg).toMatch("/Source/arm/centrumx");
+  const msg = claudeRegistryDiagnostic(false, "/src/acme/app", "/cfg");
+  expect(msg).toMatch("/src/acme/app");
   expect(msg).toMatch("/cfg");
-  expect(msg).toMatch("cd /Source/arm/centrumx && claude");
+  expect(msg).toMatch("cd /src/acme/app && claude");
   // The cause the peer report spent two failed launches discovering: a trusted
   // parent outside the child's repo says nothing about it, so the message has
   // to say so.
@@ -197,7 +197,7 @@ test("an untrusted directory is named in the diagnostic, with the one-time fix",
 });
 
 test("a trusted directory points at the terminal without naming a screen nobody has demonstrated", () => {
-  const msg = claudeRegistryDiagnostic(true, "/Source/arm", "/cfg");
+  const msg = claudeRegistryDiagnostic(true, "/src/acme", "/cfg");
   // It must NOT accuse trust, which is the failure mode this change exists to
   // remove: a message naming the wrong one of several consent screens costs
   // exactly as much time as the vague one did.
@@ -215,7 +215,7 @@ test("a bypass launch that never registered names the bypass warning and the opt
   // Demonstrated on 2026-09-27 (#45): `--level open` stops on Claude's
   // "Bypass Permissions mode" warning, with the directory already trusted.
   // Named only when the launch actually ran in bypass without accepting it.
-  const msg = claudeRegistryDiagnostic(true, "/Source/arm", "/cfg", {
+  const msg = claudeRegistryDiagnostic(true, "/src/acme", "/cfg", {
     bypassWarningPending: true,
   });
   expect(msg).toMatch(/Bypass Permissions/);
@@ -225,7 +225,7 @@ test("a bypass launch that never registered names the bypass warning and the opt
 
 test("an untrusted directory is still named first on a bypass launch", () => {
   // Trust is checked and the bypass warning is only inferred, so trust wins.
-  const msg = claudeRegistryDiagnostic(false, "/Source/arm", "/cfg", {
+  const msg = claudeRegistryDiagnostic(false, "/src/acme", "/cfg", {
     bypassWarningPending: true,
   });
   expect(msg).toMatch(/workspace trust has not been accepted/);

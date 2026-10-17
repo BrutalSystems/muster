@@ -616,7 +616,7 @@ profile = "research"
 
 test("an uncapped remote profile launches claude normal and codex read-only", async () => {
   // A profile that names no level gets the operator's own kind of launch
-  // (Mike, 2026-10-14) — for claude, the one runtime that has one. Codex gets
+  // — for claude, the one runtime that has one. Codex gets
   // the read default it would get locally, not a refusal for a level the
   // caller never named.
   const f = await fixture();

@@ -513,7 +513,7 @@ The entire delta across both files is three hunks:
 - `CANONICAL_ID.md`: the normative version line, `1.9.2` → `2.0.0`.
 - `CANONICAL_ID.md`: the new paragraph described above.
 - the fixture: `tincan_version`, and one `rawName` in the prefix-collision
-  case, `cxx-be` → `billing-api`.
+  case, renamed to `billing-api`.
 
 `naming.ts` does not appear and no expected value moved. The renamed peer is
 **input**, not an expected output, and that case's expected `canonicalId`
@@ -527,6 +527,19 @@ convenient re-sync: `test/fixtures/canonical-id.json` is in `package.json`'s
 fixture moved `publish.yml`, `RELEASING.md` and `docs/verification.md` on
 their own. Only the two frozen hashes in `test/naming.test.ts` are hand-written,
 and those are the third site behaving as documented.
+
+## Local text edit — 2026-10-17
+
+One example pair in `CANONICAL_ID.md`'s prefix-collision paragraph used a
+project name from a real machine; it now reads `atlas` / `atlas-9b`. The
+example illustrates the hazard and is not normative, so no rule, case or
+expected value changed. The fixture is untouched.
+
+| File | SHA-256 |
+| --- | --- |
+| `CANONICAL_ID.md` | `516d55ba07d191a29c68b74ea1181bc79149ab53b6c821cc9fe6dab14a78b58a` |
+
+A future re-sync takes upstream's text for that line.
 
 ## What the vendored copy covers, and what it deliberately does not
 

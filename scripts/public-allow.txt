@@ -1,0 +1,14 @@
+# Known-safe matches for scripts/check-public.sh: a hit line that also matches
+# one of these extended regexes (case-insensitive) is not reported.
+# Lines starting with # and blank lines are ignored.
+
+# Placeholder home directories in docs and tests
+/(Users|home)/(you|someone|nobody|user|example)/
+
+# Addresses that identify no one
+[a-z0-9._%+-]*no-?reply@[a-z0-9.-]+
+@example\.(com|org|net)\b
+
+# The synthetic OAuth tokens the login tests filter
+sk-ant-oat01-p41NahlJ8bCAJSEdzNOUhzVv24PC31Z
+sk-ant-oat01-QzT8mNahlJ8bCAJSEdzNOUhzVv24PC31Z

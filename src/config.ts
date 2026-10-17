@@ -13,7 +13,7 @@ import { RequesterConfigError } from "./requester-policy.js";
  * What a remote requester is permitted here.
  *
  * `level` defaults to `normal`: an enrolled remote caller gets a launch like
- * the operator's own, as a local one does (Mike, 2026-10-14). Naming `read` or
+ * the operator's own, as a local one does. Naming `read` or
  * `work` is how a profile caps it. `min_enforcement` follows the level it is
  * written beside — `none` for a normal profile, which muster does not enforce,
  * and `kernel` for a capped one — unless the profile names it.

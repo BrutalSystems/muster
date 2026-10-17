@@ -139,8 +139,8 @@ test("trust can be set on a copy with no .claude.json yet", async () => {
 // file as `<data>/auth.json`. Its CONFIG root is `OPENCODE_CONFIG_DIR ??
 // XDG_CONFIG_HOME/opencode`, used as-is with no suffix. The real config file
 // present on this machine at ~/.config/opencode is `opencode.jsonc`, not
-// `opencode.json` or `config.json`. This confirms candidate (1) from the
-// brief: point OPENCODE_CONFIG_DIR at the copy directly, and XDG_DATA_HOME at
+// `opencode.json` or `config.json`. This confirms the first candidate
+// layout: point OPENCODE_CONFIG_DIR at the copy directly, and XDG_DATA_HOME at
 // a data/ subdirectory of the copy whose "opencode/auth.json" is where the
 // binary itself will look.
 test("opencode gets OPENCODE_CONFIG_DIR and XDG_DATA_HOME pointed at the copy", () => {

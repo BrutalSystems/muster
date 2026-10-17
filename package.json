@@ -14,6 +14,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.check.json",
     "check": "npm run typecheck && npm test && node scripts/check-tarball.mjs",
+    "check:public": "scripts/check-public.sh --tree",
     "test:contract": "MUSTER_CONTRACT=1 vitest run test/contract.test.ts",
     "postinstall": "node scripts/prepare-pty.mjs",
     "pretest": "npm run build",

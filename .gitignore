@@ -23,8 +23,11 @@ PROBE_RESULTS.md
 probes/
 .private/
 
-# Subagent-driven-development scratch (ledger, briefs, review packages)
+# Subagent-driven-development scratch
 .superpowers/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Investigation records are private working notes
+docs/investigations/

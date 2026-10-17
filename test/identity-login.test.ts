@@ -25,7 +25,7 @@ async function fakeClaude() {
   return bin;
 }
 
-// node-pty spawns into `cwd`, which must exist — unlike the brief's literal
+// node-pty spawns into `cwd`, which must exist — unlike a literal
 // `/tmp/identity`, this is a real directory so tests fail for the right reason.
 async function identityDir() {
   return mkdtemp(join(tmpdir(), "mu-login-dir-"));

@@ -182,8 +182,8 @@ the workers exist.
 Take that name from the **first line** of your own `ListAgents` output — the
 line that reads `This session is <name> [ref]`. That is the address other
 sessions reach you at, and it is not necessarily the name you call yourself:
-a session identified in its own notes as `ferry-d9` was registered as
-`ferry-3a`, and a brief naming the former could never be answered.
+a session identified in its own notes as `atlas-d9` was registered as
+`atlas-3a`, and a brief naming the former could never be answered.
 
 **Read it at dispatch time, not once at the start.** The value can change
 while a session is still running — name and ref together — so a name captured
