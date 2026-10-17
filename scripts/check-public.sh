@@ -103,11 +103,14 @@ add_commits() {
     ' >>"$work/text"
 }
 
-# An annotated tag and any tag it points at, down to the object it names.
+# The message of an annotated tag and of any tag it points at, down to the
+# object it names. Its headers (object, type, tagger) are git's own record,
+# like a commit's author, and are not scanned.
 add_tag() {
   local ref=$1 sha=$2
   while [ "$(git -C "$root" cat-file -t "$sha")" = tag ]; do
-    git -C "$root" cat-file tag "$sha" | sed "s|^|tag $ref: |" >>"$work/text"
+    git -C "$root" cat-file tag "$sha" | sed '1,/^$/d' |
+      sed "s|^|tag $ref: |" >>"$work/text"
     sha=$(git -C "$root" cat-file tag "$sha" | sed -n 's/^object //p;q')
   done
 }
