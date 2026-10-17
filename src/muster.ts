@@ -8,7 +8,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { Muster, UnknownRun } from "./run.js";
+import { Muster, UnknownRun, durableId } from "./run.js";
 import { waitSeconds } from "./duration.js";
 import { delay } from "./identity/processes.js";
 import { formatHuman, humanColorEnabled, statusText } from "./format.js";
@@ -364,11 +364,7 @@ async function main() {
       // signal it will not get.
       if (onExit !== undefined)
         try {
-          await muster.armOnExit(
-            record.kind === "task" ? record.id : record.canonical_id,
-            onExit,
-            process.cwd(),
-          );
+          await muster.armOnExit(durableId(record), onExit, process.cwd());
         } catch (e) {
           print(record);
           throw e;

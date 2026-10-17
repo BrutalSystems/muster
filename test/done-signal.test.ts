@@ -1,16 +1,16 @@
 import { test, expect } from "vitest";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, realpath } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fixture, lines } from "./helpers.js";
 import { asSession, asTask } from "./narrow.js";
 import { testServer } from "./global-setup.js";
-import { Muster, UnknownRun } from "../src/run.js";
+import { Muster, UnknownRun, durableId } from "../src/run.js";
 import { Registry } from "../src/registry.js";
 import { PtyHost } from "../src/hosts/pty.js";
 import { TmuxHost } from "../src/hosts/tmux.js";
-import { delay } from "../src/identity/processes.js";
+import { delay, groupAlive, processRef } from "../src/identity/processes.js";
 import { onExitEnv } from "../src/on-exit.js";
 import { asksForHelp } from "../src/cli-options.js";
 import { waitSeconds } from "../src/duration.js";
@@ -258,6 +258,224 @@ test("a second --on-exit for the same launch is refused, not dropped", async () 
     await m.close();
   }
 }, 15000);
+
+/**
+ * Review finding 3: the check and the write were separate, so two callers
+ * handed the same launch could both pass the check, and the second command
+ * replaced the first while both callers were told they had succeeded.
+ */
+test("two --on-exit registrations at once: exactly one wins, and it is kept", async () => {
+  const f = await fixture({ MUSTER_FAKE_TASK_MS: "3000" });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  const task = asTask(
+    await m.run({ runtime: "codex", kind: "task", prompt: "x", cwd: f.root }),
+  );
+  try {
+    const results = await Promise.allSettled(
+      ["echo first", "echo second", "echo third"].map((c) =>
+        m.armOnExit(task.id, c, f.root),
+      ),
+    );
+    const won = results.flatMap((r, i) =>
+      r.status === "fulfilled"
+        ? [["echo first", "echo second", "echo third"][i]]
+        : [],
+    );
+    expect(won).toHaveLength(1);
+    for (const r of results)
+      if (r.status === "rejected")
+        expect(String(r.reason)).toMatch(/already has an --on-exit/);
+    const entry = (await new Registry(f.home).all())[0]!;
+    expect(entry.onExit?.command).toBe(won[0]);
+  } finally {
+    await m.stop(task.id);
+    await m.close();
+  }
+}, 15000);
+
+/**
+ * Review finding 1: the task worker writes its exit file on the SIGTERM a stop
+ * sends, and that file used to win, so a stopped task reported `exited`.
+ */
+test("a stopped task is reported stopped, to wait and to its --on-exit", async () => {
+  const f = await fixture({ MUSTER_FAKE_TASK_MS: "10000" });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  const out = join(f.root, "hook.txt");
+  try {
+    const task = asTask(
+      await m.run({ runtime: "codex", kind: "task", prompt: "x", cwd: f.root }),
+    );
+    await m.armOnExit(task.id, RECORD_HOOK(out), f.root);
+    await delay(300);
+    await m.stop(task.id);
+    const { done, record } = await m.wait(task.id, { timeoutMs: 8000 });
+    expect(done).toBe(true);
+    expect(record.state).toBe("stopped");
+    expect(field(await hookOutput(out), "MUSTER_STATE")).toBe("stopped");
+    expect((await m.list("task"))[0].state).toBe("stopped");
+  } finally {
+    await m.close();
+  }
+}, 20000);
+
+/**
+ * Review finding 2: the exit file's existence counted as the end, so a reader
+ * that found it created but not yet written returned `done` with a record
+ * still saying `running` — and a watcher spent its one claim on that.
+ */
+test("an exit file that does not parse is not the end", async () => {
+  const f = await fixture();
+  const registry = new Registry(f.home);
+  const { entry } = await registry.reserve(
+    { runtime: "codex", kind: "task", cwd: f.root },
+    10,
+  );
+  const exitPath = join(f.root, "exit.json");
+  await writeFile(exitPath, "");
+  // This test process stands in for a live task worker.
+  await registry.update(entry.launchId, {
+    status: "running",
+    root: (await processRef(process.pid))!,
+    exitPath,
+    outputPath: join(f.root, "output.txt"),
+  });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  try {
+    expect(await m.wait(entry.launchId, { timeoutMs: 600 })).toMatchObject({
+      done: false,
+      record: { state: "running" },
+    });
+    await writeFile(exitPath, '{"code":0,"signal":null}');
+    expect(await m.wait(entry.launchId, { timeoutMs: 3000 })).toMatchObject({
+      done: true,
+      record: { state: "exited", exit_code: 0 },
+    });
+  } finally {
+    await m.close();
+  }
+}, 15000);
+
+/**
+ * Review finding 4: the CLI armed a session by its name, and a name resolves
+ * only among running sessions, so one that ended before arming lost its hook.
+ * Armed by its durable id it still gets it, at once.
+ */
+test("a session that ends before --on-exit is armed still gets its command", async () => {
+  const f = await fixture();
+  const m = await Muster.create({
+    home: f.home,
+    env: f.env,
+    drivers: [new TmuxHost(testServer("arm-late"))],
+  });
+  const out = join(f.root, "hook.txt");
+  try {
+    const peer = asSession(
+      await m.run({
+        runtime: "codex",
+        prompt: "gone before arming",
+        cwd: f.root,
+        host: "tmux",
+      }),
+    );
+    const entry = (await new Registry(f.home).all())[0]!;
+    process.kill(-entry.group!, "SIGKILL");
+    expect((await m.wait(peer.thread_id!, { timeoutMs: 8000 })).done).toBe(
+      true,
+    );
+    // What the CLI did before: the address resolves only among running
+    // sessions, so arming by it after the end fails.
+    await expect(
+      m.armOnExit(peer.canonical_id, RECORD_HOOK(out), f.root),
+    ).rejects.toBeInstanceOf(UnknownRun);
+    // What the CLI arms with now.
+    expect(durableId(peer)).toBe(peer.thread_id);
+    await m.armOnExit(durableId(peer), RECORD_HOOK(out), f.root);
+    const text = await hookOutput(out);
+    expect(field(text, "MUSTER_ID")).toBe(peer.thread_id);
+    expect(field(text, "MUSTER_STATE")).toBe("exited");
+  } finally {
+    await m.close();
+  }
+}, 20000);
+
+/**
+ * Review finding 5: a claim is spent whether or not the command then starts,
+ * so what can fail is settled first. A directory removed since the launch
+ * falls back to HOME rather than costing the signal, and the claim is in the
+ * launch log ahead of the result.
+ */
+test("a removed --on-exit directory falls back to HOME, logged before the claim is spent", async () => {
+  const f = await fixture({ MUSTER_FAKE_TASK_MS: "800" });
+  const m = await Muster.create({ home: f.home, env: f.env });
+  const out = join(f.root, "hook.txt");
+  const doomed = join(f.root, "doomed");
+  await mkdir(doomed);
+  try {
+    const task = asTask(
+      await m.run({ runtime: "codex", kind: "task", prompt: "x", cwd: f.root }),
+    );
+    await m.armOnExit(task.id, RECORD_HOOK(out), doomed);
+    await rm(doomed, { recursive: true });
+    const text = await hookOutput(out);
+    expect(field(text, "PWD")).toBe(await realpath(f.root));
+    await delay(300);
+    const events = (await lines(join(f.home, "launches.jsonl"))).filter(
+      (e) => e.launch_id === task.id && String(e.event).startsWith("on_exit"),
+    );
+    expect(events.map((e) => e.event)).toEqual([
+      "on_exit_armed",
+      "on_exit_claimed",
+      "on_exit",
+    ]);
+    expect(events[1].warnings[0]).toContain("unusable");
+  } finally {
+    await m.close();
+  }
+}, 20000);
+
+/**
+ * Review finding 6: `groupAlive` counted zombies, which `processRef` never
+ * has, so a group left holding only an unreaped zombie kept `wait` waiting
+ * for as long as its parent chose not to reap.
+ */
+test("a group holding only a zombie is not alive", async () => {
+  // A parent outside the group that never reaps: the child becomes a zombie
+  // and stays one, the only member of the group it leads.
+  const parent = spawn(
+    "python3",
+    [
+      "-c",
+      "import subprocess,sys,time\n" +
+        "p=subprocess.Popen(['sh','-c','exit 0'],start_new_session=True)\n" +
+        "print(p.pid,flush=True)\ntime.sleep(30)",
+    ],
+    { stdio: ["ignore", "pipe", "ignore"] },
+  );
+  try {
+    const pid = Number(
+      await new Promise<string>((resolve) =>
+        parent.stdout!.once("data", (d) => resolve(String(d).trim())),
+      ),
+    );
+    await delay(300);
+    const { stdout } = await run("ps", ["-p", String(pid), "-o", "stat="]);
+    expect(stdout.trim()).toMatch(/^Z/);
+    expect(await groupAlive(pid)).toBe(false);
+  } finally {
+    parent.kill("SIGKILL");
+  }
+});
+
+test("durableId is a task's id, a Codex thread id, or a Claude/OpenCode session id", () => {
+  expect(durableId({ kind: "task", id: "t" } as never)).toBe("t");
+  expect(
+    durableId({ kind: "session", runtime: "codex", thread_id: "th" } as never),
+  ).toBe("th");
+  for (const runtime of ["claude-code", "opencode"])
+    expect(
+      durableId({ kind: "session", runtime, session_id: "se" } as never),
+    ).toBe("se");
+});
 
 test("the environment is strings, with empty for what was not observed", () => {
   const env = onExitEnv(

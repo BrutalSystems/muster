@@ -358,8 +358,9 @@ export class Registry {
     }
   }
   /**
-   * True exactly once per launch. The check and the write share a transaction,
+   * True at most once per launch. The check and the write share a transaction,
    * so two watchers racing over the same exit cannot both run the command.
+   * At most, not exactly: a watcher that dies after claiming runs nothing.
    */
   async claimOnExit(launchId: string): Promise<boolean> {
     return this.transaction(async (entries) => {
@@ -367,6 +368,26 @@ export class Registry {
       if (!entry?.onExit || entry.onExitFiredAt) return false;
       entry.onExitFiredAt = new Date().toISOString();
       return true;
+    });
+  }
+  /**
+   * Records the `--on-exit` command, refusing one already recorded. The check
+   * and the write share a transaction: two callers handed the same launch (a
+   * request key sent twice) would otherwise both see none and both succeed,
+   * with the second command silently replacing the first.
+   */
+  async armOnExit(
+    launchId: string,
+    onExit: NonNullable<Entry["onExit"]>,
+  ): Promise<void> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === launchId);
+      if (!entry) throw new Error(`Unknown launch ${launchId}`);
+      if (entry.onExit)
+        throw new Error(
+          `launch ${entry.id} already has an --on-exit command; it is claimed at most once, so a second is refused rather than dropped`,
+        );
+      entry.onExit = onExit;
     });
   }
   async update(id: string, patch: Partial<Entry>): Promise<Entry> {

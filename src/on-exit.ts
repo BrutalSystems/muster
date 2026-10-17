@@ -3,7 +3,7 @@
  * Kept out of run.ts so the environment contract can be tested without a
  * launch, since that contract is what every caller's script depends on.
  */
-import { mkdir, open } from "node:fs/promises";
+import { mkdir, open, stat, type FileHandle } from "node:fs/promises";
 import { dirname } from "node:path";
 import { spawn } from "node:child_process";
 import type { Entry } from "./registry.js";
@@ -35,6 +35,39 @@ export function onExitEnv(
   };
 }
 
+/**
+ * Where the command will run and where its output will go, settled before the
+ * command is claimed, because a claim is spent whether or not it then starts.
+ * Neither failure is allowed to cost the signal: a directory removed since the
+ * launch falls back to `fallbackCwd`, and a log that cannot be opened leaves
+ * the output discarded. Each fallback is reported, for the launch log.
+ */
+export async function prepareOnExit(opts: {
+  cwd: string;
+  fallbackCwd: string;
+  logPath: string;
+}): Promise<{ cwd: string; log?: FileHandle; warnings: string[] }> {
+  const warnings: string[] = [];
+  let cwd = opts.cwd;
+  try {
+    if (!(await stat(cwd)).isDirectory()) throw new Error("not a directory");
+  } catch (e) {
+    warnings.push(
+      `cwd ${cwd} unusable (${(e as Error).message}); ran in ${opts.fallbackCwd}`,
+    );
+    cwd = opts.fallbackCwd;
+  }
+  try {
+    await mkdir(dirname(opts.logPath), { recursive: true, mode: 0o700 });
+    return { cwd, log: await open(opts.logPath, "a", 0o600), warnings };
+  } catch (e) {
+    warnings.push(
+      `log ${opts.logPath} unusable (${(e as Error).message}); output discarded`,
+    );
+    return { cwd, warnings };
+  }
+}
+
 /** Runs `command` through `/bin/sh -c`, resolving to its exit code. */
 export async function runOnExitCommand(opts: {
   command: string;
@@ -42,21 +75,16 @@ export async function runOnExitCommand(opts: {
   env: NodeJS.ProcessEnv;
   entry: Entry;
   record: Record<string, any>;
-  logPath: string;
+  log?: FileHandle;
 }): Promise<number | null> {
-  await mkdir(dirname(opts.logPath), { recursive: true, mode: 0o700 });
-  const log = await open(opts.logPath, "a", 0o600);
-  try {
-    return await new Promise<number | null>((resolve) => {
-      const child = spawn("/bin/sh", ["-c", opts.command], {
-        cwd: opts.cwd,
-        env: { ...opts.env, ...onExitEnv(opts.entry, opts.record) },
-        stdio: ["ignore", log.fd, log.fd],
-      });
-      child.once("error", () => resolve(null));
-      child.once("exit", (code) => resolve(code));
+  const out = opts.log?.fd ?? "ignore";
+  return new Promise<number | null>((resolve) => {
+    const child = spawn("/bin/sh", ["-c", opts.command], {
+      cwd: opts.cwd,
+      env: { ...opts.env, ...onExitEnv(opts.entry, opts.record) },
+      stdio: ["ignore", out, out],
     });
-  } finally {
-    await log.close();
-  }
+    child.once("error", () => resolve(null));
+    child.once("exit", (code) => resolve(code));
+  });
 }

@@ -109,7 +109,7 @@ import {
 } from "./mcp.js";
 import { pollInterval } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
-import { runOnExitCommand } from "./on-exit.js";
+import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
@@ -195,6 +195,17 @@ export class UnknownRun extends Error {
     super(message);
     this.name = "UnknownRun";
   }
+}
+
+/**
+ * The id that names a launch for as long as the registry holds it. Not a
+ * name or `canonical_id`: those resolve only among running sessions, so a
+ * session that exits between readiness and `--on-exit` being armed would no
+ * longer be found, and would lose its command.
+ */
+export function durableId(record: RunResult): string {
+  if (record.kind === "task") return record.id;
+  return record.runtime === "codex" ? record.thread_id : record.session_id;
 }
 
 /** What `wait` resolves to: the launch's record, and whether it had ended. */
@@ -1769,7 +1780,15 @@ export class Muster {
         id: e.id,
         runtime: e.runtime,
         cwd: e.cwd,
-        state: exit ? "exited" : e.status,
+        // A stop wins over the exit file: the worker writes that file on the
+        // SIGTERM a stop sends, so its presence says the task ended, not why.
+        // `stopping` is recorded before the kill, so it is already there.
+        state:
+          e.stopping && (exit || !["starting", "running"].includes(e.status))
+            ? "stopped"
+            : exit
+              ? "exited"
+              : e.status,
         ...(e.root ? { pid: e.root.pid } : {}),
         ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
         ...(e.error ? { error: e.error } : {}),
@@ -1806,10 +1825,12 @@ export class Muster {
     if (!["starting", "running"].includes(entry.status)) return true;
     // A task's worker writes this the moment the agent exits, before it tears
     // down its group: the earliest signal there is, and the only exact one.
+    // Only a record that parses counts: a file that exists but cannot be read
+    // as one is never the end, whatever wrote it.
     if (entry.kind === "task" && entry.exitPath)
       try {
-        await stat(entry.exitPath);
-        return true;
+        const exit = JSON.parse(await readFile(entry.exitPath, "utf8"));
+        if (exit && typeof exit === "object" && "code" in exit) return true;
       } catch {}
     if (!entry.root) return !(await isSame(entry.owner));
     if (await isSame(entry.root)) return false;
@@ -1866,11 +1887,7 @@ export class Muster {
   async armOnExit(id: string, command: string, cwd: string): Promise<void> {
     if (!command.trim()) throw new Error("--on-exit needs a command");
     const entry = await this.locate(id);
-    if (entry.onExit)
-      throw new Error(
-        `launch ${entry.id} already has an --on-exit command; it runs once, so a second is refused rather than dropped`,
-      );
-    await this.registry.update(entry.launchId, { onExit: { command, cwd } });
+    await this.registry.armOnExit(entry.launchId, { command, cwd });
     const watcher = spawn(
       process.execPath,
       [
@@ -1882,7 +1899,10 @@ export class Muster {
         this.home,
         entry.launchId,
       ],
-      { detached: true, stdio: "ignore", env: this.sourceEnv, cwd },
+      // In muster's home, not the caller's directory: the command's directory
+      // is recorded on the entry, and a watcher started inside one that is
+      // later removed cannot even start Node there.
+      { detached: true, stdio: "ignore", env: this.sourceEnv, cwd: this.home },
     );
     await new Promise<void>((resolve, reject) => {
       watcher.once("spawn", resolve);
@@ -1897,28 +1917,51 @@ export class Muster {
   }
   /**
    * The watcher's whole job: wait for the launch to end, claim the command so
-   * it runs once however many watchers there are, and run it. Its output goes
-   * to `<home>/on-exit/<launch id>.log`, its status to the launch log.
+   * at most one watcher runs it, and run it. Its output goes to
+   * `<home>/on-exit/<launch id>.log`, its status to the launch log.
+   *
+   * Everything that can fail is settled before the claim — where it runs and
+   * where its output goes — because a claim is spent whether or not the
+   * command then starts. `on_exit_claimed` is written between the claim and
+   * the spawn, so a command lost after its claim shows in the launch log as a
+   * claim with no `on_exit` result.
    */
   async runOnExit(launchId: string): Promise<number | null> {
     const { record } = await this.wait(launchId);
-    if (!(await this.registry.claimOnExit(launchId))) return null;
-    const entry = (await this.registry.peek(launchId))!;
-    const code = await runOnExitCommand({
-      command: entry.onExit!.command,
-      cwd: entry.onExit!.cwd,
-      env: this.sourceEnv,
-      entry,
-      record,
+    const armed = (await this.registry.peek(launchId))?.onExit;
+    if (!armed) return null;
+    const prepared = await prepareOnExit({
+      cwd: armed.cwd,
+      fallbackCwd: this.sourceEnv.HOME ?? homedir(),
       logPath: join(this.home, "on-exit", `${launchId}.log`),
     });
-    await this.log.write({
-      event: "on_exit",
-      launch_id: launchId,
-      state: record.state,
-      exit_code: code,
-    });
-    return code;
+    try {
+      if (!(await this.registry.claimOnExit(launchId))) return null;
+      const entry = (await this.registry.peek(launchId))!;
+      await this.log.write({
+        event: "on_exit_claimed",
+        launch_id: launchId,
+        state: record.state,
+        ...(prepared.warnings.length ? { warnings: prepared.warnings } : {}),
+      });
+      const code = await runOnExitCommand({
+        command: entry.onExit!.command,
+        cwd: prepared.cwd,
+        env: this.sourceEnv,
+        entry,
+        record,
+        log: prepared.log,
+      });
+      await this.log.write({
+        event: "on_exit",
+        launch_id: launchId,
+        state: record.state,
+        exit_code: code,
+      });
+      return code;
+    } finally {
+      await prepared.log?.close();
+    }
   }
 
   async output(id: string, requester: RequesterId = LOCAL) {

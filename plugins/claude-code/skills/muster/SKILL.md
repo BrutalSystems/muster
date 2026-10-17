@@ -99,16 +99,18 @@ is already the default) and a loop that errors never fires. muster tells you:
 - **`muster wait <id> [--timeout 30m]`** — blocks, then prints the final record.
   Exit 0 ended (read `state` and `exit_code`), 2 no such id, 124 timed out.
   Run it in the background and you are notified when it returns.
-- **`muster run … --on-exit '<command>'`** — muster runs the command once when
-  the agent exits, however it ends (crash, kill, `stop`, reap), outside the
-  sandbox, from your cwd. Env: `MUSTER_ID`, `MUSTER_RUNTIME`, `MUSTER_KIND`,
+- **`muster run … --on-exit '<command>'`** — muster runs the command at most
+  once when the agent exits, however it ends (crash, kill, `stop`, reap),
+  outside the sandbox, from your cwd (or `$HOME` if that is gone). One per
+  launch; a second is refused. Env: `MUSTER_ID`, `MUSTER_RUNTIME`, `MUSTER_KIND`,
   `MUSTER_STATE`, `MUSTER_EXIT_CODE` and `MUSTER_SIGNAL` (empty for a session),
   `MUSTER_OUTPUT` (a task's output file), `MUSTER_RECORD` (JSON). Log:
   `~/.muster/on-exit/<launch id>.log`. CLI only.
 
 Both work the same for claude, codex and opencode, and for a sealed task that
-can write nothing. If the watcher dies first (a reboot), the command never
-runs; `muster wait <id>` still returns the real end state at once.
+can write nothing. If the watcher dies (a reboot), the command may never run;
+the launch log shows `on_exit_claimed` without `on_exit` if it died mid-way.
+`muster wait <id>` still returns the real end state at once.
 
 ## Reaching and stopping a session
 

@@ -22,8 +22,9 @@ muster.
   ended and prints its final record, with `state`, `exit_code` and `signal`.
   It exits 0 when the launch has ended, 2 for an id that names nothing, and
   124 on timeout.
-- **`muster run … --on-exit '<command>'`** runs the command once the agent
-  exits: a clean exit, a crash, a kill, `muster stop` or a reap. muster runs
+- **`muster run … --on-exit '<command>'`** runs the command at most once,
+  when the agent exits: a clean exit, a crash, a kill, `muster stop` or a
+  reap. muster runs
   it, outside the agent's sandbox, with `MUSTER_ID`, `MUSTER_RUNTIME`,
   `MUSTER_KIND`, `MUSTER_STATE`, `MUSTER_EXIT_CODE`, `MUSTER_SIGNAL`,
   `MUSTER_OUTPUT` (a task's output file) and `MUSTER_RECORD` set. It is
@@ -31,9 +32,16 @@ muster.
 - **`--help` works anywhere among a command's flags**, so
   `muster run codex --help` prints run's usage instead of "Unknown option". An
   unknown option now points at `muster <command> --help`.
-- **A session ended with `muster stop` is reported `stopped`, never
-  `exited`.** A listing that happened to run between the kill and the status
-  write used to record the stop as the agent exiting on its own.
+- **A launch ended with `muster stop` is reported `stopped`, never
+  `exited`.** For a session, a listing that ran between the kill and the
+  status write used to record the stop as the agent exiting on its own. For a
+  task, the exit file the worker writes on the stop's SIGTERM used to win
+  outright.
+- **A task's exit file is published atomically**, so a reader can no longer
+  find it created but empty.
+- **A process group holding only a zombie counts as ended**, as a zombie
+  process already did. Before, `wait` waited on one for as long as its parent
+  left it unreaped.
 
 ## 3.0.2 — 2026-10-16
 
