@@ -16,18 +16,19 @@
 # else `git config public.termsFile`, else ~/.config/public-terms.txt when it
 # exists. Both are extended regexes, one per line, matched case-insensitively
 # unless the line starts with (?c); lines starting with # and blank lines are
-# ignored. A hit line that also
-# matches scripts/public-allow.txt is not reported.
+# ignored. Text matching scripts/public-allow.txt is cut out of a hit line,
+# and the rest of the line is checked again, so an allowed value excuses only
+# itself.
 #
 # Uses the system grep -E, which honours \b; `git grep -E` on macOS does not.
-# Exits 1 when anything matches. A reviewed false positive can be pushed with
-# `git push --no-verify`.
+# Exits 1 when anything matches and 2 when the check itself cannot run. A
+# reviewed false positive can be pushed with `git push --no-verify`.
 set -euo pipefail
 
 # The system grep, not a shell alias or function that may wrap another tool.
 if [ -x /usr/bin/grep ]; then grep() { /usr/bin/grep "$@"; }; fi
 
-root=$(git rev-parse --show-toplevel)
+root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 here=$(cd "$(dirname "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -70,21 +71,44 @@ else
 fi
 if [ -f "$here/public-allow.txt" ]; then
   strip "$here/public-allow.txt" >"$work/allow"
+else
+  : >"$work/allow"
 fi
+search -v '^(?c)' "$work/patterns" >"$work/fold"
+sed -n 's/^(?c)//p' "$work/patterns" >"$work/exact"
+# A malformed pattern in any file fails here, before anything is scanned.
+for f in fold exact allow; do
+  if [ -s "$work/$f" ]; then search -E -f "$work/$f" /dev/null; fi
+done
 : >"$work/text"
 
 # Each line of $work/text is "<where>: <text>", so a hit says where it is.
 
 add_commits() {
-  git -C "$root" log --no-color --format='commit %h%n%B' "$@" |
-    awk '/^commit [0-9a-f]+$/ { c = $2; next } { print "message " c ": " $0 }' \
+  git -C "$root" log --no-color --format='@@commit %h%n%B' "$@" |
+    awk '/^@@commit [0-9a-f]+$/ { c = $2; next } { print "message " c ": " $0 }' \
       >>"$work/text"
-  git -C "$root" log --no-color --format='commit %h' -p --unified=0 "$@" |
+  # Merges are diffed against their first parent, so text a conflict
+  # resolution adds is seen too. Headers are read only between "diff --git"
+  # and the first hunk, so an added line that starts with "++" stays content.
+  git -C "$root" log --no-color --no-ext-diff --no-textconv \
+    --diff-merges=first-parent --format='@@commit %h' -p --unified=0 "$@" |
     awk '
-      /^commit [0-9a-f]+$/ { c = $2; next }
-      /^\+\+\+ / { f = substr($0, 5); sub(/^b\//, "", f); next }
-      /^\+/ { print c " " f ": " substr($0, 2) }
+      /^@@commit [0-9a-f]+$/ { c = $2; hunk = 0; next }
+      /^diff --git / { hunk = 0; next }
+      !hunk && /^\+\+\+ / { f = substr($0, 5); sub(/^b\//, "", f); next }
+      /^@@ / { hunk = 1; next }
+      hunk && /^\+/ { print c " " f ": " substr($0, 2) }
     ' >>"$work/text"
+}
+
+# An annotated tag and any tag it points at, down to the object it names.
+add_tag() {
+  local ref=$1 sha=$2
+  while [ "$(git -C "$root" cat-file -t "$sha")" = tag ]; do
+    git -C "$root" cat-file tag "$sha" | sed "s|^|tag $ref: |" >>"$work/text"
+    sha=$(git -C "$root" cat-file tag "$sha" | sed -n 's/^object //p;q')
+  done
 }
 
 add_files() {
@@ -97,14 +121,25 @@ case "$mode" in
   --push)
     remote=${1:-origin}
     zero=0000000000000000000000000000000000000000
-    while read -r local_ref local_sha _remote_ref _remote_sha; do
+    # What the remote holds now, not what the remote-tracking refs last saw:
+    # a stale ref could otherwise hide commits this push would publish.
+    git -C "$root" ls-remote "$remote" >"$work/remote" || {
+      echo "check-public: could not list $remote; refusing to report clean" >&2
+      exit 2
+    }
+    : >"$work/known"
+    while read -r sha _ref; do
+      if git -C "$root" cat-file -e "$sha^{commit}" 2>/dev/null; then
+        echo "$sha" >>"$work/known"
+      fi
+    done <"$work/remote"
+    while read -r local_ref local_sha remote_ref _remote_sha; do
       [ "$local_sha" = "$zero" ] && continue
       echo "ref: $local_ref" >>"$work/text"
-      if [ "$(git -C "$root" cat-file -t "$local_sha")" = tag ]; then
-        git -C "$root" cat-file tag "$local_sha" |
-          sed "s|^|tag $local_ref: |" >>"$work/text"
-      fi
-      add_commits "$local_sha" --not --remotes="$remote"
+      echo "ref: $remote_ref" >>"$work/text"
+      add_tag "$local_ref" "$local_sha"
+      # shellcheck disable=SC2046
+      add_commits "$local_sha" --not $(sort -u "$work/known")
     done
     ;;
   --range)
@@ -119,24 +154,27 @@ case "$mode" in
     add_files "$@"
     ;;
   *)
-    sed -n '2,24s/^# \{0,1\}//p' "$0" >&2
+    sed -n '2,26s/^# \{0,1\}//p' "$0" >&2
     exit 2
     ;;
 esac
 
-search -v '^(?c)' "$work/patterns" >"$work/fold"
-sed -n 's/^(?c)//p' "$work/patterns" >"$work/exact"
 : >"$work/hits"
-if [ -s "$work/fold" ]; then
-  search -E -i -f "$work/fold" "$work/text" >>"$work/hits"
-fi
-if [ -s "$work/exact" ]; then
-  search -E -f "$work/exact" "$work/text" >>"$work/hits"
-fi
-sort -u -o "$work/hits" "$work/hits"
-if [ -s "$work/hits" ] && [ -s "${work}/allow" ]; then
-  search -E -i -v -f "$work/allow" "$work/hits" >"$work/kept"
-  mv "$work/kept" "$work/hits"
+scan() {
+  if [ -s "$work/fold" ]; then search -E -i -f "$work/fold" "$1"; fi
+  if [ -s "$work/exact" ]; then search -E -f "$work/exact" "$1"; fi
+}
+scan "$work/text" | sort -u >"$work/hits"
+# An allowed match is cut out of its line, and the rest of the line is
+# scanned again, so an allowed value cannot shield anything beside it.
+if [ -s "$work/hits" ] && [ -s "$work/allow" ]; then
+  ALLOW="$work/allow" perl -ne '
+    BEGIN { open my $a, "<", $ENV{ALLOW} or die; chomp(@re = <$a>) }
+    my $line = $_;
+    $line =~ s/$_//gi for @re;
+    print $line;
+  ' "$work/hits" >"$work/rest"
+  scan "$work/rest" | sort -u >"$work/hits"
 fi
 
 if [ -s "$work/hits" ]; then

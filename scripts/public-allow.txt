@@ -1,13 +1,16 @@
-# Known-safe matches for scripts/check-public.sh: a hit line that also matches
-# one of these extended regexes (case-insensitive) is not reported.
+# Known-safe values for scripts/check-public.sh: text matching one of these
+# extended regexes (case-insensitive) is cut out of a hit line, and the rest of
+# the line is checked again.
 # Lines starting with # and blank lines are ignored.
 
 # Placeholder home directories in docs and tests
-/(Users|home)/(you|someone|nobody|user|example)/
+/(Users|home)/(you|someone|nobody|user|example|u)\b
 
 # Addresses that identify no one
-[a-z0-9._%+-]*no-?reply@[a-z0-9.-]+
-@example\.(com|org|net)\b
+[0-9]+\+[a-z0-9-]+@users\.noreply\.github\.com
+\bnoreply@anthropic\.com
+\bnpm-oidc-no-reply@github\.com
+[a-z0-9._%+-]+@example\.(com|org|net)\b
 
 # The synthetic OAuth tokens the login tests filter
 sk-ant-oat01-p41NahlJ8bCAJSEdzNOUhzVv24PC31Z
