@@ -171,11 +171,14 @@ muster run claude --open kitty --prompt "Review this project"
 
 The command is run directly, never through a shell, so a placeholder value is
 never re-parsed. A program that wants a shell command string takes it as one
-element, which makes the shell yours:
-`["sh", "-c", "{tmux} -L {server} attach-session -t {target}"]`. `{server}` and
-`{target}` are checked before the command runs, and it shares the launch
-deadline. A command that is missing or exits non-zero fails the launch, as a
-missing built-in app does. The built-in names `terminal`, `iterm2` and `ghostty`
+element, which makes the shell yours, so quote `{tmux}`, whose path may hold a
+space:
+`["sh", "-c", "'{tmux}' -L {server} attach-session -t {target}"]`. The argv
+form above avoids the question. `{server}` and `{target}` are checked before the
+command runs, and it shares the launch deadline. The command is started
+detached and not waited for, since a terminal runs until its window closes. A
+command that cannot be started, or exits non-zero within about a second and a
+half, fails the launch, as a missing built-in app does. The built-in names `terminal`, `iterm2` and `ghostty`
 cannot be redefined, and an unknown name is refused before anything is started.
 Configured apps work on any platform that has tmux.
 

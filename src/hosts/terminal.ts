@@ -1,4 +1,5 @@
 import { access, realpath } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { builtinTerminals } from "./types.js";
 import type { OpenerCommand, TerminalApp } from "./types.js";
@@ -74,6 +75,39 @@ export function openerArgv(
     ),
   );
 }
+/**
+ * Starts a configured opener without waiting for it to finish: a terminal that
+ * stays in the foreground (`kitty -e …`) runs until its window closes, so
+ * waiting would kill it at the timeout. Success is a clean spawn that has not
+ * failed within a short grace; a spawn error or a non-zero exit inside the
+ * grace is reported.
+ */
+function startOpener(
+  name: string,
+  file: string,
+  args: string[],
+  timeout: number,
+) {
+  const grace = Math.min(1500, timeout);
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(file, args, { detached: true, stdio: "ignore" });
+    const fail = (why: string) =>
+      reject(new Error(`Opener "${name}" failed: ${why}`));
+    const timer = setTimeout(() => {
+      child.unref();
+      resolve();
+    }, grace);
+    child.once("error", (e) => {
+      clearTimeout(timer);
+      fail(e.message);
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else fail(signal ? `killed by ${signal}` : `exit ${code}`);
+    });
+  });
+}
 export async function tmuxExecutable() {
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
@@ -109,13 +143,7 @@ export async function openTerminal(
     const found = await openerExecutable(file!);
     if (!found)
       throw new Error(`Opener "${terminal}": cannot find command "${file}"`);
-    try {
-      await command(found, args, timeout);
-    } catch (e) {
-      throw new Error(
-        `Opener "${terminal}" failed: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    }
+    await startOpener(terminal, found, args, timeout);
     return;
   }
   if (terminal === "ghostty") {

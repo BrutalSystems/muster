@@ -284,8 +284,10 @@ test("--open accepts a configured name, as the launch's or the default", () => {
   expect(() => resolveTerminal({ terminal: "nope" }, cfg)).toThrow(
     /Unknown terminal "nope".*\[open\.apps\.nope\]/,
   );
-  // A default naming an app that is not defined fails when used, not silently.
-  expect(() =>
-    resolveTerminal({}, configSchema.parse({ terminal: "kitty" })),
-  ).toThrow(/Unknown terminal "kitty"/);
+  // A default naming an app that is not defined fails at load, as a typo in
+  // the old enum did.
+  expect(() => configSchema.parse({ terminal: "kitty" })).toThrow(
+    /is not a built-in \(terminal, iterm2, ghostty\)/,
+  );
+  expect(configSchema.parse({ terminal: "auto" }).terminal).toBe("auto");
 });

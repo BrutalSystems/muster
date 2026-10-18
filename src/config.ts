@@ -134,7 +134,7 @@ const sessionSectionSchema = z
   })
   .strict()
   .default({});
-export const configSchema = z
+const configObject = z
   .object({
     host: z.enum(["auto", "tmux", "pty", "macos-terminal"]).default("auto"),
     /**
@@ -193,8 +193,21 @@ export const configSchema = z
   // stay strict for the same reason — an unknown key inside a requester
   // profile is a policy statement that would not apply.
   .strip();
+export const configSchema = configObject.superRefine((config, ctx) => {
+  const t = config.terminal;
+  if (
+    t !== "auto" &&
+    !(builtinTerminals as readonly string[]).includes(t) &&
+    !config.open.apps[t]
+  )
+    ctx.addIssue({
+      code: "custom",
+      path: ["terminal"],
+      message: `terminal "${t}" is not a built-in (${builtinTerminals.join(", ")}) or defined under [open.apps.${t}]`,
+    });
+});
 export type Config = z.infer<typeof configSchema>;
-const knownConfigKeys = new Set(Object.keys(configSchema.shape));
+const knownConfigKeys = new Set(Object.keys(configObject.shape));
 /**
  * Top-level keys this build does not know, sorted. Reported rather than
  * refused, so a newer config degrades to "this Muster ignores that" instead of

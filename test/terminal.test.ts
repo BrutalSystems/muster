@@ -1,4 +1,7 @@
 import { test, expect, vi } from "vitest";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { openTerminal, terminalAvailable } from "../src/hosts/terminal.js";
 import { command } from "../src/identity/processes.js";
 import { ampleDeadline } from "./deadline.js";
@@ -73,31 +76,25 @@ test("iTerm2 receives its own window creation command", async () => {
   expect(args[2]).toContain("attach-session -t @2");
 });
 
-const kitty = [
-  "kitty",
-  "-e",
-  "{tmux}",
-  "-L",
-  "{server}",
-  "attach-session",
-  "-t",
-  "{target}",
-];
+const later = () => Date.now() + 5000;
 test("a configured opener runs as an argv with the placeholders filled in", async () => {
-  await openTerminal(
-    "/opt/bin/tmux",
-    "muster-test",
-    "@7",
-    Date.now() + 5000,
-    "kitty",
-    ["/bin/sh", "-c", "echo {tmux} -L {server} -t {target}"],
+  const dir = await mkdtemp(join(tmpdir(), "opener-"));
+  const out = join(dir, "args");
+  await openTerminal("/opt/bin/tmux", "muster-test", "@7", later(), "kitty", [
+    "/bin/sh",
+    "-c",
+    'echo "$@" > "$0"',
+    out,
+    "{tmux}",
+    "-L {server}",
+    "-t {target}",
+  ]);
+  expect(await readFile(out, "utf8")).toBe(
+    "/opt/bin/tmux -L muster-test -t @7\n",
   );
-  const [bin, args] = vi.mocked(command).mock.calls.at(-1)!;
-  expect(bin).toBe("/bin/sh");
-  expect(args).toEqual(["-c", "echo /opt/bin/tmux -L muster-test -t @7"]);
+  await rm(dir, { recursive: true });
 });
 test("a configured opener is validated like a built-in one", async () => {
-  vi.mocked(command).mockClear();
   for (const [server, ref] of [
     ["muster;touch BAD", "@1"],
     ["muster", "@1;touch BAD"],
@@ -106,38 +103,61 @@ test("a configured opener is validated like a built-in one", async () => {
       openTerminal("/bin/tmux", server!, ref!, ampleDeadline(), "kitty", [
         "/bin/sh",
         "-c",
+        "exit 9",
         "{target}",
       ]),
     ).rejects.toThrow(/Invalid/);
-  expect(command).not.toHaveBeenCalled();
 });
 test("a configured opener keeps the launch deadline", async () => {
-  vi.mocked(command).mockClear();
   await expect(
     openTerminal("/bin/tmux", "muster-test", "@1", Date.now() - 1, "kitty", [
       "/bin/sh",
       "{target}",
     ]),
   ).rejects.toThrow(/deadline/);
-  expect(command).not.toHaveBeenCalled();
 });
-test("a missing or failing opener command is a clear error", async () => {
+test("a missing, failing or unconfigured opener is a clear error", async () => {
   await expect(
-    openTerminal("/bin/tmux", "muster-test", "@1", Date.now() + 5000, "kitty", [
+    openTerminal("/bin/tmux", "muster-test", "@1", later(), "kitty", [
       "no-such-opener-command",
       "{target}",
     ]),
   ).rejects.toThrow(/Opener "kitty": cannot find command/);
-  vi.mocked(command).mockRejectedValueOnce(new Error("exit 3"));
   await expect(
-    openTerminal("/bin/tmux", "muster-test", "@1", Date.now() + 5000, "kitty", [
+    openTerminal("/bin/tmux", "muster-test", "@1", later(), "kitty", [
       "/bin/sh",
+      "-c",
+      "exit 3",
       "{target}",
     ]),
   ).rejects.toThrow(/Opener "kitty" failed: exit 3/);
   await expect(
-    openTerminal("/bin/tmux", "muster-test", "@1", Date.now() + 5000, "kitty"),
+    openTerminal("/bin/tmux", "muster-test", "@1", later(), "kitty", [
+      "/etc/hosts",
+      "{target}",
+    ]),
+  ).rejects.toThrow(/cannot find command/);
+  await expect(
+    openTerminal("/bin/tmux", "muster-test", "@1", later(), "kitty"),
   ).rejects.toThrow(/No opener configured/);
+});
+test("a foreground opener that outlives the timeout still succeeds, left running", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "opener-"));
+  const pidFile = join(dir, "pid");
+  // The deadline leaves less than the opener's lifetime: waiting for it would
+  // be killed and reported as a failure.
+  await openTerminal(
+    "/bin/tmux",
+    "muster-test",
+    "@1",
+    Date.now() + 400,
+    "kitty",
+    ["/bin/sh", "-c", 'echo $$ > "$0"; exec sleep 30', pidFile, "{target}"],
+  );
+  const pid = Number((await readFile(pidFile, "utf8")).trim());
+  expect(() => process.kill(pid, 0)).not.toThrow();
+  process.kill(pid, "SIGTERM");
+  await rm(dir, { recursive: true });
 });
 test("a configured opener is available when its command is, on any platform", async () => {
   expect(
@@ -150,5 +170,4 @@ test("a configured opener is available when its command is, on any platform", as
     ]),
   ).toBe(false);
   expect(await terminalAvailable("darwin", "kitty")).toBe(false);
-  expect(kitty).toContain("{target}");
 });
