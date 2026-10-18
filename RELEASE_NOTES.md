@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.3.1 — 2026-10-18
 
 - `--resume` now refuses a conversation recorded in another directory, and
   names the `--cwd` to use. Claude itself resumes one from anywhere, which
