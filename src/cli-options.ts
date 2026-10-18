@@ -27,6 +27,8 @@ export const CLI_OPTIONS = {
   "no-mcp": { type: "boolean" },
   plugin: { type: "string", multiple: true },
   model: { type: "string" },
+  resume: { type: "string" },
+  "fork-session": { type: "boolean" },
   "idle-timeout": { type: "string" },
   ttl: { type: "string" },
   title: { type: "string" },

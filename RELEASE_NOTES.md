@@ -10,6 +10,20 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `muster run claude --resume <session-id>` reopens an existing Claude
+  conversation as a normal muster session or task: the prompt is its next
+  message, and `--open`, `--title`, `--model`, `wait`, `stop`, `output` and
+  `list` work as for any launch. The run reports the resumed session id, so
+  the ledger and Tin Can name the same session. `--fork-session` continues it
+  under a new id instead. The same flags are accepted after `--`
+  (`-- --resume <id>`, `-r <id>`, `--fork-session`), where they used to be
+  refused. Refused: an id that is not a UUID (a bare `--resume` or a search
+  term would open Claude's picker), a conversation the launch's profile does
+  not hold, a session that is still running unless forked, a launch under an
+  identity, and a remote requester. Claude only.
+
 ## 3.2.1 — 2026-10-18
 
 - An agent hosted in tmux now gets its own `TMUX` and `TMUX_PANE`. The launch

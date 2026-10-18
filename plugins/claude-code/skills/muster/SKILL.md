@@ -68,8 +68,11 @@ Useful `run` flags: `--model` (bare id for claude/codex, `PROVIDER/MODEL` for
 opencode), `--mcp NAME` (repeatable, replaces `default_mcp`), `--no-mcp`,
 `--idle-timeout 30m`, `--ttl 4h`, `--title TEXT`, `--project NAME` (instead of
 `--cwd`), `--identity NAME`, `--request-key KEY`, `--open [terminal|iterm2|ghostty]`,
-`--format human`. Runtime flags go after `--`, and only an allowlist passes
-(`--model`/`-m`; Claude's `--effort`, `--name`; OpenCode's `--agent`, `--variant`).
+`--format human`, `--resume SESSION_ID` and `--fork-session` (Claude: reopen
+an existing conversation; the run reports the resumed id, and a running session
+is refused unless forked). Runtime flags go after `--`, and only an allowlist
+passes (`--model`/`-m`; Claude's `--effort`, `--name`, `--resume`/`-r`,
+`--fork-session`; OpenCode's `--agent`, `--variant`).
 
 Refused rather than resolved: two of `--read-only`/`--write-here`/`--unrestricted`, `--level`
 and `--permissions`/`--sandbox`;

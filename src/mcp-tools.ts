@@ -101,6 +101,16 @@ export const MCP_TOOLS = [
           description:
             "Model for the launch. A bare model id for claude and codex; PROVIDER/MODEL for opencode, where it overrides the configured [opencode] model. Recorded on the run and reported by `list`.",
         },
+        resume: {
+          type: "string",
+          description:
+            "Claude only: reopen this existing session (its UUID) instead of starting a new one; the prompt is its next message, and the run reports the same session id. Refused while that session is running, for a remote requester, and with an identity.",
+        },
+        forkSession: {
+          type: "boolean",
+          description:
+            "With resume: continue the conversation under a new session id, leaving the original as it was. Allowed while the original is running.",
+        },
         idleTimeout: {
           type: "string",
           description:

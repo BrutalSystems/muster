@@ -265,6 +265,7 @@ async function main() {
       "write-here": writeHere,
       unrestricted,
       "on-exit": onExit,
+      "fork-session": forkSession,
       timeout,
       ...values
     } = parsed;
@@ -298,6 +299,8 @@ async function main() {
       ["--idle-timeout", idleTimeout],
       ["--ttl", values.ttl],
       ["--title", values.title],
+      ["--resume", values.resume],
+      ["--fork-session", forkSession],
     ] as const)
       if (value !== undefined && command !== "run")
         throw new Error(`${name} applies only to run`);
@@ -357,6 +360,7 @@ async function main() {
           ...values,
           ...(requestKey === undefined ? {} : { requestKey }),
           ...(idleTimeout === undefined ? {} : { idleTimeout }),
+          ...(forkSession === undefined ? {} : { forkSession }),
           args,
         });
       } catch (e) {

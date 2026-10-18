@@ -109,6 +109,14 @@ export type AgentCapabilities = {
 export const MODEL_FLAGS = ["--model", "-m"];
 
 /**
+ * Claude's resume flags, consumed for the same reason as the model's: Muster
+ * validates them and delivers them once (`resolveResume`). `--fork-session` is
+ * the one consumed flag that takes no value.
+ */
+export const RESUME_FLAGS = ["--resume", "-r"];
+export const FORK_FLAG = "--fork-session";
+
+/**
  * One row per runtime. `Record<Runtime, …>` is the point: a fourth agent is a
  * compile error until every column is filled, where the scattered
  * `runtime === ?` checks this replaced would simply have been incomplete.
@@ -119,7 +127,7 @@ export const AGENTS: Record<Runtime, AgentCapabilities> = {
     enforcement: "kernel",
     runtimeOptions: {
       forwarded: ["--effort", "--name"],
-      consumed: MODEL_FLAGS,
+      consumed: [...MODEL_FLAGS, ...RESUME_FLAGS, FORK_FLAG],
     },
     trustWorkspace: setWorkspaceTrust,
     beforeStop: null,

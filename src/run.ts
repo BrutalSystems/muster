@@ -27,6 +27,8 @@ import {
   resolvePermissions,
   resolveTerminal,
   runtimeArgs,
+  resolveResume,
+  assertResumable,
   type RunRequest,
   type Level,
   type LaunchPermissions,
@@ -1356,6 +1358,22 @@ export class Muster {
       title,
       argv: plannedArgv,
     } = await this.plan(req, policy, requester, level);
+    // Before anything is reserved, like the refusals in `plan`. A remote
+    // requester is refused because a resumed session carries the whole of
+    // that conversation, and the profile holds every conversation its owner
+    // has had: being allowed to launch is not being allowed to read those.
+    // An identity launch runs in a fresh copy of the config dir, which holds
+    // none of them, so it could only fail.
+    const resume = resolveResume(effective);
+    if (resume) {
+      if (requester.kind !== "local")
+        throw new Error("--resume is available to a local requester only");
+      if (identityName)
+        throw new Error(
+          "--resume cannot be combined with an identity: the identity's config dir holds none of this profile's conversations",
+        );
+      assertResumable(resume, agentBase);
+    }
     let argv = plannedArgv;
     let codexPolicy: string[] = [];
     const reserved = await this.reserveLaunch({

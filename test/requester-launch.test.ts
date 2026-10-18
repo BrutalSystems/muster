@@ -662,3 +662,23 @@ profile = "research"
     await m.close();
   }
 }, 15000);
+
+test("a remote requester cannot resume a session, which would hand it that conversation", async () => {
+  const { f, m } = await muster(twoRequesters());
+  try {
+    await expect(
+      m.run(
+        {
+          runtime: "claude",
+          prompt: "carry on",
+          cwd: f.root,
+          resume: "a130ac07-7eab-4803-8661-1517c75812a4",
+        },
+        remote,
+      ),
+    ).rejects.toThrow(/local requester only/);
+    expect(await m.list()).toEqual([]);
+  } finally {
+    await m.close();
+  }
+}, 15000);

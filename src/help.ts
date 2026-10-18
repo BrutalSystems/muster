@@ -104,6 +104,14 @@ export const COMMANDS: Command[] = [
         "model for the launch: a bare id for claude and codex, PROVIDER/MODEL for opencode",
       ],
       [
+        "--resume SESSION_ID",
+        "claude only: reopen that session instead of starting a new one; the prompt is its next message (also accepted after --)",
+      ],
+      [
+        "--fork-session",
+        "with --resume: continue it under a new session id, leaving the original untouched",
+      ],
+      [
         "--idle-timeout DURATION",
         "stop a tmux session after this much inactivity (off by default)",
       ],

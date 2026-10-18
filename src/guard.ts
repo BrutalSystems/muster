@@ -1,18 +1,18 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import TOML from "@iarna/toml";
 import type { Config, RequesterProfile } from "./config.js";
-import { claudeConfigDir } from "./identity/claude.js";
+import { claudeConfigDir, claudeSessionsDir } from "./identity/claude.js";
 import { builtinTerminals } from "./hosts/types.js";
 import type { TerminalApp } from "./hosts/types.js";
 import { mcpName, type PreparedMcp } from "./mcp.js";
 import { claudeMcpConfig } from "./claude-policy.js";
 import { pluginName } from "./plugins.js";
-import { AGENTS, MODEL_FLAGS } from "./agents.js";
+import { AGENTS, FORK_FLAG, MODEL_FLAGS, RESUME_FLAGS } from "./agents.js";
 import { LAUNCH_OPTIONS } from "./options.js";
 import type { RequesterId } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
@@ -41,6 +41,10 @@ export const runSchema = z
     mcp: z.array(mcpName).optional(),
     plugin: z.array(pluginName).optional(),
     model: z.string().min(1).optional(),
+    /** A Claude session id to reopen instead of starting a new one. See `resolveResume`. */
+    resume: z.string().min(1).optional(),
+    /** With `resume`: continue it under a new session id, leaving the original untouched. */
+    forkSession: z.boolean().optional(),
     idleTimeout: z.string().min(1).optional(),
     ttl: z.string().min(1).optional(),
     /** The terminal title of a tmux session. See `resolveTitle`. */
@@ -439,6 +443,118 @@ function nameModel(req: RunRequest, config: Config): ResolvedModel | null {
     : { model: configured, source: "config", origin: "config" };
 }
 
+/** What Claude prints as a session id, and the only thing `--resume` is given:
+ *  a bare `--resume` or a search term opens Claude's picker, which no muster
+ *  launch can answer. */
+const SESSION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type ResolvedResume = { id: string; fork: boolean };
+/**
+ * The session a launch reopens, from `--resume`/`--fork-session` or the same
+ * flags after `--` — consumed like a model, so the child's argv carries them
+ * once, from here. Claude only: Codex and OpenCode resume through different
+ * commands, which muster does not drive.
+ */
+export function resolveResume(req: RunRequest): ResolvedResume | null {
+  const named: string[] = [];
+  let fork = req.forkSession === true;
+  for (let i = 0; i < req.args.length; i++) {
+    const arg = req.args[i]!,
+      flag = normaliseFlag(arg);
+    if (flag === FORK_FLAG && !arg.includes("=")) fork = true;
+    if (!RESUME_FLAGS.includes(flag)) continue;
+    // Case-sensitive like the rest of the pass-through: `-R` is not `-r`.
+    if (!arg.startsWith("--") && arg.split("=")[0] !== flag) continue;
+    const value = arg.includes("=")
+      ? arg.slice(arg.indexOf("=") + 1)
+      : req.args[i + 1];
+    if (!value || value.startsWith("-"))
+      throw new Error(`Missing value for ${arg}`);
+    named.push(value);
+  }
+  if (req.resume !== undefined) named.unshift(req.resume);
+  if (named.length > 1)
+    throw new Error(
+      `Session to resume named twice: ${named.join(" and ")}. Name it once.`,
+    );
+  const id = named[0];
+  if (id === undefined) {
+    if (fork) throw new Error("--fork-session applies only with --resume");
+    return null;
+  }
+  if (req.runtime !== "claude")
+    throw new Error(
+      `--resume is supported for claude only, not ${req.runtime}`,
+    );
+  if (!SESSION_ID.test(id))
+    throw new Error(
+      `--resume takes a Claude session id (a UUID), not ${JSON.stringify(id)}`,
+    );
+  return { id: id.toLowerCase(), fork };
+}
+/**
+ * Refuses a resume Claude would fail on, or one that would put two processes
+ * on one conversation. Checked before anything is reserved or spawned.
+ *
+ * - The transcript must exist in the config dir the launch opens. Claude
+ *   reports a missing one only inside its terminal, where a muster launch
+ *   would wait out its whole identity deadline before saying so.
+ * - The session must not be running. Two Claude processes appending to one
+ *   transcript interleave it, and both would register the same session id, so
+ *   tincan and the ledger could not say which one a message reaches. A fork
+ *   only reads the original, so it may resume a live one.
+ */
+export function assertResumable(
+  resume: ResolvedResume,
+  env: NodeJS.ProcessEnv,
+  alive: (pid: number) => boolean = pidAlive,
+): void {
+  const configDir = claudeConfigDir(env);
+  const projects = join(configDir, "projects");
+  let found = false;
+  try {
+    found = readdirSync(projects).some((dir) =>
+      existsSync(join(projects, dir, resume.id + ".jsonl")),
+    );
+  } catch {}
+  if (!found)
+    throw new Error(
+      `No Claude conversation ${resume.id} in ${configDir}; --resume reopens a session recorded in the profile this launch runs in`,
+    );
+  if (resume.fork) return;
+  const sessions = claudeSessionsDir(env);
+  let files: string[] = [];
+  try {
+    files = readdirSync(sessions).filter((f) => /^\d+\.json$/.test(f));
+  } catch {}
+  for (const file of files) {
+    let rec: { pid?: unknown; sessionId?: unknown };
+    try {
+      rec = JSON.parse(readFileSync(join(sessions, file), "utf8"));
+    } catch {
+      continue;
+    }
+    const pid = Number(file.slice(0, -5));
+    if (
+      typeof rec.sessionId === "string" &&
+      rec.sessionId.toLowerCase() === resume.id &&
+      alive(pid)
+    )
+      throw new Error(
+        `Claude session ${resume.id} is running (pid ${pid}); stop it before resuming it, or pass --fork-session to continue it under a new id`,
+      );
+  }
+}
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    // EPERM: it exists and belongs to someone else, which is still running.
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /**
  * Per runtime: which pass-through options ride to the child, and which are
  * recognised but delivered by `resolveModel` instead. A consumed flag must not
@@ -567,6 +683,11 @@ export function runtimeArgs(req: RunRequest): string[] {
     const keep = !caseChanged && forwarded.includes(flag);
     if (caseChanged || (!keep && !consumed.includes(flag)))
       throw new Error(`Runtime option refused: ${arg}`);
+    // The one consumed switch: it takes no value, so there is none to step over.
+    if (flag === FORK_FLAG) {
+      if (arg.includes("=")) throw new Error(`${FORK_FLAG} takes no value`);
+      continue;
+    }
     if (arg.includes("=")) {
       if (keep) {
         refuseWidening(flag, arg.slice(arg.indexOf("=") + 1));
@@ -704,7 +825,13 @@ export function launchArgs(
   // first, but `launchArgs` is exported and an input carrying both a model
   // conflict and a refused option must report the model conflict.
   const resolved = resolveModel(req, config);
-  const extra = runtimeArgs(req);
+  const resume = resolveResume(req);
+  const extra = [
+    ...runtimeArgs(req),
+    ...(resume
+      ? ["--resume", resume.id, ...(resume.fork ? [FORK_FLAG] : [])]
+      : []),
+  ];
   // OpenCode never reaches here — `run.ts` branches it to the OpenCode launch
   // builders, which carry the model in their config overlay.
   const model = resolved ? ["--model", resolved.model] : [];

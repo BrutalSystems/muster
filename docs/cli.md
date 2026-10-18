@@ -35,11 +35,37 @@ allowlist is `--model` / `-m`, plus Claude's `--effort` and `--name` and OpenCod
 and `--variant`. For Claude and Codex a model named there is _consumed_ rather
 than forwarded — it reaches the child through the same path as `--model`, so it
 appears once — and naming a model both ways is refused rather than resolved by
-precedence. Unknown options, bundled short options, config injection and
+precedence. Claude's `--resume <id>` / `-r <id>` and `--fork-session` are
+consumed the same way, as the spellings of muster's own `--resume` and
+`--fork-session` (see below). Unknown options, bundled short options, config injection and
 raw permission overrides are refused, even with `allow_dangerous_flags`
 enabled. Use Muster's normalized permission flags. Prompt strings are always
 passed as one literal argument. Codex and Claude launches and OpenCode tasks put
 that value after `--`; OpenCode sessions use the dedicated `--prompt` value.
+
+## Resuming a Claude session
+
+`muster run claude --resume <session-id> --prompt "<next message>"` reopens an
+existing conversation instead of starting one. Everything else about the
+launch is as usual — level, `--open`, `--title`, `--model`, `--on-exit`, and
+`wait`/`stop`/`output`/`list` afterwards — and the run reports the resumed
+session id, not a new one. Add `--fork-session` to continue it under a new id,
+leaving the original untouched.
+
+Muster refuses, before anything is reserved:
+
+- an id that is not a UUID: a bare `--resume` or a search term opens Claude's
+  picker, which nobody is there to answer;
+- a conversation that is not in the config dir the launch runs in
+  (`$CLAUDE_CONFIG_DIR/projects/*/<id>.jsonl`);
+- a session that is still running, since two processes on one transcript
+  interleave it and register the same id twice — `--fork-session` is allowed,
+  because it only reads the original;
+- `--identity`, whose fresh config dir holds none of the profile's
+  conversations;
+- a remote requester: the resumed session carries that whole conversation, and
+  being allowed to launch is not being allowed to read every conversation in
+  the profile.
 
 ## Provider and model configuration
 
