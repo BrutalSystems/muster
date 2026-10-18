@@ -104,8 +104,7 @@ export type AgentCapabilities = {
  * child's argv twice.
  *
  * Exactly these two spellings. Anything else a caller passes after `--` is in
- * neither list and is refused, which is what keeps `--config=sandbox_mode=...`
- * an error rather than something quietly dropped.
+ * neither list and is refused rather than quietly dropped.
  */
 export const MODEL_FLAGS = ["--model", "-m"];
 
@@ -126,7 +125,10 @@ export const AGENTS: Record<Runtime, AgentCapabilities> = {
   codex: {
     configHomeVar: "CODEX_HOME",
     enforcement: "kernel",
-    runtimeOptions: { forwarded: [], consumed: MODEL_FLAGS },
+    runtimeOptions: {
+      forwarded: ["--add-dir", "-c", "--sandbox"],
+      consumed: MODEL_FLAGS,
+    },
     trustWorkspace: setCodexWorkspaceTrust,
     beforeStop: null,
     refreshMetadata: refreshCodex,

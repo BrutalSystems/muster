@@ -155,6 +155,45 @@ test("an unknown runtime option is still refused", () => {
   );
 });
 
+test("codex forwards --add-dir, -c and --sandbox to the child's argv", () => {
+  const args = [
+    "--add-dir",
+    "/tmp/scratch",
+    "-c",
+    "model_reasoning_effort=high",
+    "--sandbox=workspace-write",
+  ];
+  expect(runtimeArgs(req({ runtime: "codex", args }))).toEqual(args);
+});
+
+test("codex still refuses other options, and -C is not read as -c", () => {
+  expect(() =>
+    runtimeArgs(req({ runtime: "codex", args: ["--cd", "/tmp"] })),
+  ).toThrow("Runtime option refused: --cd");
+  expect(() =>
+    runtimeArgs(req({ runtime: "codex", args: ["-C", "/tmp"] })),
+  ).toThrow("Runtime option refused: -C");
+});
+
+test("codex options cannot widen the sandbox or change the approval policy", () => {
+  for (const args of [
+    ["--sandbox", "danger-full-access"],
+    ["--sandbox=full-access"],
+    ["-c", "sandbox_mode=danger-full-access"],
+    ["-c", 'approval_policy="never"'],
+    ["-c", "sandbox_workspace_write.network_access=true"],
+  ])
+    expect(() => runtimeArgs(req({ runtime: "codex", args }))).toThrow(
+      "Runtime option refused",
+    );
+});
+
+test("claude does not gain the codex options", () => {
+  expect(() =>
+    runtimeArgs(req({ runtime: "claude", args: ["--add-dir", "/tmp"] })),
+  ).toThrow("Runtime option refused: --add-dir");
+});
+
 test("opencode still forwards a model from args to the child's argv", () => {
   expect(
     runtimeArgs(req({ runtime: "opencode", args: ["--model", "local/qwen"] })),

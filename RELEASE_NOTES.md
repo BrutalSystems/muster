@@ -10,6 +10,13 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `muster run codex … --` now passes `--add-dir`, `-c` and `--sandbox` through
+  to Codex, so a launch can grant an extra writable directory or set a config
+  value. Every other runtime option is still refused, and `-C` is not read as
+  `-c`.
+
 ## 3.1.2 — 2026-10-17
 
 Housekeeping. No change to how muster behaves.

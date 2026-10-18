@@ -540,17 +540,34 @@ export function resolveTitle(
     );
   return sanitiseTitle(req.title);
 }
+/**
+ * `--sandbox` and `-c` are passed to Codex, so they must not be a way round the
+ * policy Muster sets: no full-access sandbox, and no config override of the
+ * sandbox or the approval policy.
+ */
+function refuseWidening(flag: string, value: string): void {
+  if (flag === "--sandbox" && /full-access/i.test(value))
+    throw new Error(`Runtime option refused: --sandbox ${value}`);
+  if (flag === "-c" && /^\s*(sandbox|approval_policy)/i.test(value))
+    throw new Error(`Runtime option refused: -c ${value}`);
+}
 export function runtimeArgs(req: RunRequest): string[] {
   const result: string[] = [];
   const { forwarded, consumed } = AGENTS[req.runtime].runtimeOptions;
   for (let i = 0; i < req.args.length; i++) {
     const arg = req.args[i]!,
       flag = normaliseFlag(arg);
-    const keep = forwarded.includes(flag);
-    if (!keep && !consumed.includes(flag))
+    // A single-dash flag is case-sensitive: codex's `-C` (working directory)
+    // must not pass as `-c` (config override) just because `flag` is lowercased.
+    const caseChanged = !arg.startsWith("--") && arg.split("=")[0] !== flag;
+    const keep = !caseChanged && forwarded.includes(flag);
+    if (caseChanged || (!keep && !consumed.includes(flag)))
       throw new Error(`Runtime option refused: ${arg}`);
     if (arg.includes("=")) {
-      if (keep) result.push(arg);
+      if (keep) {
+        refuseWidening(flag, arg.slice(arg.indexOf("=") + 1));
+        result.push(arg);
+      }
     } else {
       // The value is stepped over for a consumed flag exactly as for a
       // forwarded one, so a missing value is still an error and the next
@@ -558,7 +575,10 @@ export function runtimeArgs(req: RunRequest): string[] {
       const value = req.args[++i];
       if (!value || value.startsWith("-"))
         throw new Error(`Missing value for ${arg}`);
-      if (keep) result.push(arg, value);
+      if (keep) {
+        refuseWidening(flag, value);
+        result.push(arg, value);
+      }
     }
   }
   return result;
