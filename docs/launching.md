@@ -147,6 +147,41 @@ iTerm2 uses its [documented scripting interface](https://iterm2.com/documentatio
 If the launch request to the viewer fails,
 Muster stops the launched session and returns an error.
 
+### Other terminals
+
+`--open <name>` (and `terminal = "<name>"` in `config.toml`, as the default)
+also takes a name you define under `[open.apps]`. An app is the command to run,
+as an argv array with three placeholders filled in per launch: `{tmux}` (the
+tmux executable), `{server}` (the tmux server name) and `{target}` (the window,
+such as `@12`). It must contain `{target}`.
+
+```toml
+terminal = "kitty"   # optional: make it the default for --open
+
+[open.apps.kitty]
+command = ["kitty", "-e", "{tmux}", "-L", "{server}", "attach-session", "-t", "{target}"]
+
+[open.apps.wezterm]
+command = ["wezterm", "start", "--", "{tmux}", "-L", "{server}", "attach-session", "-t", "{target}"]
+```
+
+```sh
+muster run claude --open kitty --prompt "Review this project"
+```
+
+The command is run directly, never through a shell, so a placeholder value is
+never re-parsed. A program that wants a shell command string takes it as one
+element, which makes the shell yours, so quote `{tmux}`, whose path may hold a
+space:
+`["sh", "-c", "'{tmux}' -L {server} attach-session -t {target}"]`. The argv
+form above avoids the question. `{server}` and `{target}` are checked before the
+command runs, and it shares the launch deadline. The command is started
+detached and not waited for, since a terminal runs until its window closes. A
+command that cannot be started, or exits non-zero within about a second and a
+half, fails the launch, as a missing built-in app does. The built-in names `terminal`, `iterm2` and `ghostty`
+cannot be redefined, and an unknown name is refused before anything is started.
+Configured apps work on any platform that has tmux.
+
 Auto-selection tries tmux, then pty. Every peer includes `host`, `capabilities`
 and `attach_hint`. Watchability is separate from the runtime's idle/busy state.
 

@@ -235,3 +235,59 @@ test("a normal launch whose settings default to bypass is refused", () => {
     /settings\.local\.json/,
   );
 });
+
+test("[open.apps] takes an argv template and rejects what cannot run", () => {
+  const ok = configSchema.parse({
+    terminal: "kitty",
+    open: {
+      apps: {
+        kitty: {
+          command: [
+            "kitty",
+            "-e",
+            "{tmux}",
+            "-L",
+            "{server}",
+            "-t",
+            "{target}",
+          ],
+        },
+      },
+    },
+  });
+  expect(ok.open.apps.kitty!.command[0]).toBe("kitty");
+  expect(configSchema.parse({}).open.apps).toEqual({});
+  const bad = (apps: unknown) =>
+    configSchema.safeParse({ open: { apps } }).success;
+  expect(bad({ k: { command: ["k", "{nope}", "{target}"] } })).toBe(false);
+  expect(bad({ k: { command: ["k", "{server}"] } })).toBe(false);
+  expect(bad({ k: { command: [] } })).toBe(false);
+  expect(bad({ k: {} })).toBe(false);
+  expect(bad({ k: { command: ["k", "{target}"], shell: true } })).toBe(false);
+  expect(bad({ ghostty: { command: ["k", "{target}"] } })).toBe(false);
+  expect(bad({ "bad name": { command: ["k", "{target}"] } })).toBe(false);
+});
+test("--open accepts a configured name, as the launch's or the default", () => {
+  const cfg = configSchema.parse({
+    terminal: "kitty",
+    open: {
+      apps: {
+        kitty: { command: ["kitty", "{target}"] },
+        wez: { command: ["wez", "{target}"] },
+      },
+    },
+  });
+  expect(resolveTerminal({}, cfg)).toBe("kitty");
+  expect(resolveTerminal({ terminal: "wez" }, cfg)).toBe("wez");
+  expect(resolveTerminal({ terminal: "ghostty" }, cfg)).toBe("ghostty");
+  expect(resolveTerminal({ terminal: "auto" }, cfg)).toBe("kitty");
+  expect(() => resolveTerminal({ terminal: "nope" }, cfg)).toThrow(
+    /Unknown terminal "nope".*\[open\.apps\.nope\]/,
+  );
+  // A default naming an app that is not defined fails at load, as a typo in
+  // the old enum did.
+  expect(() => configSchema.parse({ terminal: "kitty" })).toThrow(
+    /is not a built-in \(terminal, iterm2, ghostty\)/,
+  );
+  expect(configSchema.parse({ terminal: "auto" }).terminal).toBe("auto");
+});

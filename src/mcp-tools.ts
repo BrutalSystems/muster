@@ -40,8 +40,8 @@ export const MCP_TOOLS = [
         },
         terminal: {
           type: "string",
-          enum: ["auto", "terminal", "iterm2", "ghostty"],
-          description: "Viewer app; requires open. Auto uses Terminal.app.",
+          description:
+            "Viewer app; requires open. terminal, iterm2, ghostty, or a name defined under [open.apps] in config. Auto uses the configured default.",
         },
         permissions: {
           type: "string",

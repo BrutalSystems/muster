@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { command, processRef, stopTree } from "../identity/processes.js";
-import type { TerminalHost, LaunchOptions, TerminalApp } from "./types.js";
+import type {
+  TerminalHost,
+  LaunchOptions,
+  TerminalApp,
+  OpenerCommand,
+} from "./types.js";
 import { terminalAvailable, tmuxExecutable, openTerminal } from "./terminal.js";
 /** tmux rewrites every control character in `-F` output to an underscore when
  * it runs without a UTF-8 locale — LANG, LC_ALL and LC_CTYPE all unset, which is
@@ -199,13 +204,14 @@ export class TmuxHost implements TerminalHost {
       return false;
     }
   }
-  openAvailable(terminal: TerminalApp = "terminal") {
-    return terminalAvailable(process.platform, terminal);
+  openAvailable(terminal: TerminalApp = "terminal", opener?: OpenerCommand) {
+    return terminalAvailable(process.platform, terminal, opener);
   }
   async open(
     hostRef: string,
     deadline: number,
     terminal: TerminalApp = "terminal",
+    opener?: OpenerCommand,
   ) {
     await openTerminal(
       await tmuxExecutable(),
@@ -213,6 +219,7 @@ export class TmuxHost implements TerminalHost {
       hostRef,
       deadline,
       terminal,
+      opener,
     );
   }
   capabilities() {

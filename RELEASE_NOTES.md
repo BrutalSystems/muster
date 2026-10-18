@@ -12,6 +12,12 @@ as patches, so do not read an old entry under the new rule.
 
 ## Unreleased
 
+- `--open` can open a session in any terminal you configure. Define it under
+  `[open.apps.<name>]` in `config.toml` as a `command` argv with `{tmux}`,
+  `{server}` and `{target}` placeholders, then pass `--open <name>` or set
+  `terminal = "<name>"` as the default. The command runs directly, never
+  through a shell. The built-ins (`terminal`, `iterm2`, `ghostty`) are
+  unchanged. See [Opening a terminal](docs/launching.md#opening-a-terminal).
 - `muster run codex … --` now passes `--add-dir`, `-c` and `--sandbox` through
   to Codex, so a launch can grant an extra writable directory or set a config
   value. Every other runtime option is still refused, and `-C` is not read as
