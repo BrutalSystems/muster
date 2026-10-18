@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.3.0 — 2026-10-18
 
 - `muster run claude --resume <session-id>` reopens an existing Claude
   conversation as a normal muster session or task: the prompt is its next
