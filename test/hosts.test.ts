@@ -163,3 +163,43 @@ test("the status bar default is off, and config carries it to the host", () => {
   expect((onHost as TmuxHost).status).toBe("on");
   expect((hosts({})[0] as TmuxHost).status).toBe("off");
 });
+
+// The agent's own pane is the only thing that says which terminal window shows
+// it: Scotty maps $TMUX_PANE to the attached client's tty. A caller's $TMUX
+// would name the wrong server, so the launch env drops it and the bootstrap
+// puts back the one tmux gave it.
+for (const host of [new TmuxHost(testServer("hosts")), new PtyHost()]) {
+  test(`${host.id} gives the agent its own tmux identity or none`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muster-host-"));
+    const path = join(dir, "seen.json");
+    const script =
+      'require("fs").writeFileSync(process.argv[1],JSON.stringify({tmux:process.env.TMUX,pane:process.env.TMUX_PANE}));setInterval(()=>{},1000)';
+    const result = await host.launch({
+      argv: [process.execPath, "-e", script, path],
+      cwd: dir,
+      env: { PATH: process.env.PATH! },
+      label: "tmux identity",
+    });
+    const ref = await processRef(result.pid);
+    try {
+      let seen;
+      for (let i = 0; i < 50; i++) {
+        try {
+          seen = JSON.parse(await readFile(path, "utf8"));
+          break;
+        } catch {
+          await delay(100);
+        }
+      }
+      if (host.id === "tmux") {
+        expect(seen.tmux).toContain(",");
+        expect(seen.pane).toMatch(/^%\d+$/);
+      } else {
+        expect(seen.tmux).toBeUndefined();
+        expect(seen.pane).toBeUndefined();
+      }
+    } finally {
+      if (ref) await host.stop(result.hostRef);
+    }
+  });
+}
