@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.3.3 — 2026-10-18
 
 - A locked registry now exits **75** (`EX_TEMPFAIL`), not 1, from every
   command, so a script polling `list` or `wait` can tell "busy, retry" from a
