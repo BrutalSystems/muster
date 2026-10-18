@@ -52,7 +52,12 @@ import {
 } from "./identity-store.js";
 import { resolveCredential, type Credential } from "./identity-token.js";
 import { copyIdentity, identityEnv } from "./identity-copy.js";
-import { currentEntry, Registry, type Entry } from "./registry.js";
+import {
+  currentEntry,
+  Registry,
+  RegistryLocked,
+  type Entry,
+} from "./registry.js";
 import { LaunchLog } from "./log.js";
 import { hosts, selectHost } from "./hosts/index.js";
 import { AGENTS } from "./agents.js";
@@ -1969,6 +1974,9 @@ export class Muster {
     try {
       return await this.find(id);
     } catch (e) {
+      // Busy is not gone: `wait` exits 2 for an UnknownRun, and a poller that
+      // read a lock as "no such run" is how #64 ended a wait loop early.
+      if (e instanceof RegistryLocked) throw e;
       const message = (e as Error).message;
       // The resolver's "unknown: <every live name>" reads as a list of
       // matches; the ambiguous case does want its candidates, so it keeps them.

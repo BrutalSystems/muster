@@ -9,6 +9,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { Muster, UnknownRun, durableId, failedLaunchId } from "./run.js";
+import { RegistryLocked } from "./registry.js";
 import { waitSeconds } from "./duration.js";
 import { delay } from "./identity/processes.js";
 import { formatHuman, humanColorEnabled, statusText } from "./format.js";
@@ -574,5 +575,5 @@ main().catch((e) => {
       ? `\n[muster] see \`muster ${command} --help\` for its options`
       : "";
   process.stderr.write(`[muster] ${(e as Error).message}${hint}\n`);
-  process.exitCode = 1;
+  process.exitCode = e instanceof RegistryLocked ? RegistryLocked.exitCode : 1;
 });

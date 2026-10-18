@@ -14,7 +14,7 @@ import { fixture, lines } from "./helpers.js";
 import { asSession, asTask } from "./narrow.js";
 import { testServer } from "./global-setup.js";
 import { Muster, UnknownRun, durableId } from "../src/run.js";
-import { Registry } from "../src/registry.js";
+import { Registry, RegistryLocked } from "../src/registry.js";
 import { PtyHost } from "../src/hosts/pty.js";
 import { TmuxHost } from "../src/hosts/tmux.js";
 import { delay, groupAlive, processRef } from "../src/identity/processes.js";
@@ -119,6 +119,26 @@ test("wait on an id that names nothing fails at once", async () => {
   try {
     await expect(m.wait("no-such-run")).rejects.toBeInstanceOf(UnknownRun);
   } finally {
+    await m.close();
+  }
+});
+
+test("wait on a locked registry says busy, not that the run is gone", async () => {
+  // #64: `wait` exits 2 for UnknownRun, and a lock read that way ended a
+  // poller's wait early. The second read is the one inside the id resolver.
+  const f = await fixture();
+  const m = await Muster.create({ home: f.home, env: f.env });
+  const registry = (m as any).registry as Registry;
+  let reads = 0;
+  const real = registry.all.bind(registry);
+  registry.all = async () => {
+    if (reads++ === 0) return [];
+    throw new RegistryLocked("Registry locked, held by pid 1 for 9s");
+  };
+  try {
+    await expect(m.wait("some-session")).rejects.toBeInstanceOf(RegistryLocked);
+  } finally {
+    registry.all = real;
     await m.close();
   }
 });

@@ -160,7 +160,7 @@ export const COMMANDS: Command[] = [
       ["--format FORMAT", "json (default) or human"],
     ],
     notes: [
-      "Prints the final record, with state, exit_code and signal (null for a session, whose terminal keeps no exit status). Exits 0 when it has ended, 2 for an id that names nothing, and 124 on timeout, printing the record as it stands.",
+      "Prints the final record, with state, exit_code and signal (null for a session, whose terminal keeps no exit status). Exits 0 when it has ended, 2 for an id that names nothing, 124 on timeout, printing the record as it stands, and 75 when the registry is locked (as every command does): retry.",
     ],
     examples: [
       "muster wait 6fae755b-8f5d-4425-8ed7-69e84bfac8c5",

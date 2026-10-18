@@ -28,6 +28,14 @@ red for failures or nonzero exit codes, and cyan for follow-up commands. IDs
 and paths retain the normal text color. Set `NO_COLOR=1` to disable colors;
 piped output and `TERM=dumb` are always uncolored. JSON never includes colors.
 
+## Exit status
+
+Every command exits 1 on an error, with these exceptions. `wait` exits 2 for
+an id that names nothing and 124 on timeout. Any command exits **75** when the
+registry is locked by another muster operation for longer than the lock wait:
+retry it. A lock whose owner has died is broken automatically, and so is one
+with no owner recorded once it is 15 seconds old.
+
 ## Passing options to the runtime
 
 `run` accepts an optional `--` followed by runtime arguments. The normal

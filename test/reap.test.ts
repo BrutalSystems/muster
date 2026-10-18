@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { decide, pollInterval, reapCheck } from "../src/reap.js";
-import { Registry } from "../src/registry.js";
+import { Registry, RegistryLocked } from "../src/registry.js";
 import { COMMANDS } from "../src/help.js";
 import { Muster } from "../src/run.js";
 import { PtyHost } from "../src/hosts/pty.js";
@@ -269,7 +269,7 @@ test("a transient read failure re-arms instead of ending the chain", async () =>
     launchId: "whatever",
     argv: ["/node", "/muster.js"],
     readEntries: () => {
-      throw new Error("Registry locked; verify no Muster operation is running");
+      throw new RegistryLocked("Registry locked, held by pid 1 for 9s");
     },
     schedule: async (seconds) => {
       scheduled.push(seconds);

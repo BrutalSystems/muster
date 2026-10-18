@@ -321,10 +321,14 @@ test("a reader that leaves early neither crashes the CLI nor strands the lock", 
       })),
     ),
   );
-  const child = spawnChild(process.execPath, [cli, "list", "--format", "human"], {
-    env: { ...process.env, HOME: root },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const child = spawnChild(
+    process.execPath,
+    [cli, "list", "--format", "human"],
+    {
+      env: { ...process.env, HOME: root },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   let stderr = "";
   child.stderr!.on("data", (d) => (stderr += d));
   child.stdout!.once("data", () => child.stdout!.destroy());
@@ -332,4 +336,26 @@ test("a reader that leaves early neither crashes the CLI nor strands the lock", 
   expect(stderr).not.toContain("EPIPE");
   expect(code).toBe(0);
   expect(existsSync(join(home, "registry.lock"))).toBe(false);
+}, 20000);
+
+test("a locked registry exits 75, which a poller can tell from a run that is gone", async () => {
+  // #64: a wait loop read the lock error, exit 1, as "task gone" and moved on.
+  const root = await mkdtemp(join(tmpdir(), "muster-locked-"));
+  const home = join(root, ".muster");
+  // Fresh and unowned: respected, as a holder between mkdir and its owner file.
+  await mkdir(join(home, "registry.lock"), { recursive: true });
+  const code = await new Promise((resolve) => {
+    let stderr = "";
+    const child = spawnChild(process.execPath, [cli, "list"], {
+      env: { ...process.env, HOME: root },
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    child.stderr!.on("data", (d) => (stderr += d));
+    child.once("exit", (c) => resolve([c, stderr]));
+  });
+  const [status, stderr] = code as [number, string];
+  expect(stderr).toMatch(
+    /Registry locked, with no owner recorded for \d+s; retry shortly/,
+  );
+  expect(status).toBe(75);
 }, 20000);

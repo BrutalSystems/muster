@@ -159,12 +159,25 @@ export class IdempotencyKeyReuse extends Error {
   }
 }
 /**
- * A lock directory with no owner file is presumed live for this long. Long
- * enough that no transaction comes near it, and the holder writes its owner
- * file immediately after taking the lock, so in practice only a lock left by a
- * version that wrote none (an empty directory) ever reaches it.
+ * A lock directory with no owner file is presumed live for this long. A
+ * transaction holds the lock for milliseconds and the holder writes its owner
+ * file immediately after taking it, so a lock still unowned this long was left
+ * by a holder killed in between, or by a version that wrote none (#64). Three
+ * default lock waits: one waiter may still time out on it, the next breaks it.
  */
-const UNOWNED_LOCK_MS = 60_000;
+const UNOWNED_LOCK_MS = 15_000;
+/**
+ * The registry is busy, not broken and not empty: the CLI exits 75
+ * (EX_TEMPFAIL, "try again later") for it, so a script polling `list` or
+ * `wait` can tell it from a run that is gone (#64) and retry.
+ */
+export class RegistryLocked extends Error {
+  static readonly exitCode = 75;
+  constructor(message: string) {
+    super(message);
+    this.name = "RegistryLocked";
+  }
+}
 let self: ProcessRef | undefined;
 /** Statuses whose process is over: such an entry no longer holds its id. */
 const FINISHED: readonly Entry["status"][] = ["exited", "failed", "stopped"];
@@ -204,10 +217,15 @@ export class Registry {
         if (await this.breakStale(lock)) continue;
         if (Date.now() > deadline) {
           const owner = await lockOwner(lock);
-          throw new Error(
-            owner
-              ? `Registry locked, held by pid ${owner.pid}; verify no Muster operation is running before removing registry.lock`
-              : "Registry locked; verify no Muster operation is running before removing registry.lock",
+          const age = await ageMs(lock);
+          const held = [
+            owner ? `held by pid ${owner.pid}` : "with no owner recorded",
+            age === undefined ? undefined : `for ${Math.round(age / 1000)}s`,
+          ]
+            .filter(Boolean)
+            .join(" ");
+          throw new RegistryLocked(
+            `Registry locked, ${held}; retry shortly. If it persists, verify no Muster operation is running before removing ${lock}`,
           );
         }
         await delay(20);

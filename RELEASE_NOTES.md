@@ -10,6 +10,18 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- A locked registry now exits **75** (`EX_TEMPFAIL`), not 1, from every
+  command, so a script polling `list` or `wait` can tell "busy, retry" from a
+  run that is gone (`wait` exits 2 for that) (#64). `wait` used to report a
+  lock hit while resolving its id as "no such run", exit 2. The message says how long
+  the lock has been held and by which pid, or that no owner was recorded.
+- A `registry.lock` with no owner file is broken after 15 seconds instead of a
+  minute. A holder killed between taking the lock and recording itself used
+  to block every command for the whole minute. A lock whose recorded owner
+  has died was already broken at once.
+
 ## 3.3.2 — 2026-10-18
 
 - `--resume` now works on a session muster has launched before. The new launch

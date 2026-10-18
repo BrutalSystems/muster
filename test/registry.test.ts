@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "vitest";
-import { Registry } from "../src/registry.js";
+import { RegistryLocked, Registry } from "../src/registry.js";
 
 test("registry round-trips OpenCode endpoint ownership metadata", async () => {
   const home = await mkdtemp(join(tmpdir(), "muster-registry-opencode-"));
@@ -188,6 +188,18 @@ test("a lock with no owner is taken over once it is old", async () => {
   expect(existsSync(lock)).toBe(false);
 });
 
+test("a lock with no owner is taken over after 15 seconds, not a minute", async () => {
+  // #64: a holder killed between mkdir and its owner file blocked every
+  // command for the whole bound; a transaction holds the lock for milliseconds.
+  const home = await mkdtemp(join(tmpdir(), "muster-registry-unowned-"));
+  const lock = join(home, "registry.lock");
+  await mkdir(lock);
+  const old = new Date(Date.now() - 20_000);
+  await utimes(lock, old, old);
+  await expect(new Registry(home).all()).resolves.toEqual([]);
+  expect(existsSync(lock)).toBe(false);
+});
+
 test("a fresh lock with no owner is still respected", async () => {
   // The holder may be between mkdir and writing its owner file.
   const home = await mkdtemp(join(tmpdir(), "muster-registry-fresh-"));
@@ -227,7 +239,10 @@ test("a lock held by a live process is respected, and the error names it", async
     JSON.stringify(await utcRef(process.pid)),
   );
   await expect(new Registry(home, 200).all()).rejects.toThrow(
-    new RegExp(`held by pid ${process.pid}`),
+    new RegExp(`held by pid ${process.pid} for \\d+s`),
+  );
+  await expect(new Registry(home, 200).all()).rejects.toBeInstanceOf(
+    RegistryLocked,
   );
   expect(existsSync(join(home, "registry.lock"))).toBe(true);
 });
