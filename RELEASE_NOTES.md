@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.2.1 — 2026-10-18
 
 - An agent hosted in tmux now gets its own `TMUX` and `TMUX_PANE`. The launch
   environment drops the caller's `TMUX`, because it names the caller's server,

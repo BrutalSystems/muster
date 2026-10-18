@@ -1,6 +1,6 @@
 {
   "name": "muster",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Teaches Claude Code to launch, reach and stop Claude Code, Codex and OpenCode sessions and tasks with the muster CLI, under the containment it chooses.",
   "author": {
     "name": "BrutalSystems"
