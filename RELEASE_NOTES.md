@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.3.2 — 2026-10-18
 
 - `--resume` now works on a session muster has launched before. The new launch
   failed with "Durable identity already registered", because the finished
