@@ -14,6 +14,10 @@ looping inside it. A session with a client attached is never stopped. The limit
 applies to tmux sessions only: pty and macos-terminal sessions die with the
 process that launched them, and a task ends when its prompt does.
 
+The limit is enforced by a check the tmux server runs on a timer. Its output,
+including any error and the launch id it was for, goes to
+`~/.muster/reap.log`. It never shows up in a tmux pane.
+
 ## Knowing when a launch has ended
 
 Two ways, the same for Claude, Codex and OpenCode, sessions and tasks. Both

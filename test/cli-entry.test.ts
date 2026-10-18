@@ -359,3 +359,18 @@ test("a locked registry exits 75, which a poller can tell from a run that is gon
   );
   expect(status).toBe(75);
 }, 20000);
+
+test("reap-check runs even when the config it never needs is broken", async () => {
+  // #65: Muster.create() read ~/.muster/config.toml before reap-check was
+  // dispatched, so a bad config failed every poll before it could re-arm.
+  const root = await mkdtemp(join(tmpdir(), "muster-reap-config-"));
+  await mkdir(join(root, ".muster"));
+  await writeFile(join(root, ".muster", "config.toml"), "this is = = not toml");
+  const home = join(root, "home");
+  const { stderr } = await promisify(execFile)(
+    process.execPath,
+    [cli, "reap-check", "--home", home, "--socket", "nosuch", "no-such-launch"],
+    { env: { ...process.env, HOME: root } },
+  );
+  expect(stderr).toBe("");
+}, 20000);

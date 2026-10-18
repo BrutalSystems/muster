@@ -67,12 +67,25 @@ test("a tmux session reports its own idleness and can be scheduled against", asy
       await mkdtemp(join(tmpdir(), "muster-sched-")),
       "fired",
     );
-    await host.schedule(1, ["/bin/sh", "-c", `echo yes > ${marker}`]);
+    const log = join(marker, "..", "reap.log");
+    await host.schedule(1, ["/bin/sh", "-c", `echo yes > ${marker}`], log);
+    // A job that fails: its stderr reaches the log rather than being lost,
+    // and nothing is left for tmux to report into another pane (#65).
+    await host.schedule(
+      1,
+      ["/bin/sh", "-c", "echo '[muster] it broke' >&2; exit 1"],
+      log,
+    );
     for (let i = 0; i < 40; i++) {
-      if (await readFile(marker, "utf8").catch(() => null)) break;
+      if (
+        (await readFile(marker, "utf8").catch(() => null)) &&
+        (await readFile(log, "utf8").catch(() => ""))
+      )
+        break;
       await delay(100);
     }
     expect(await readFile(marker, "utf8")).toContain("yes");
+    expect(await readFile(log, "utf8")).toContain("[muster] it broke");
   } finally {
     await host.stop(hostRef);
   }

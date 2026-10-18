@@ -114,7 +114,7 @@ import {
   mcpEnvironment,
   type PreparedMcp,
 } from "./mcp.js";
-import { pollInterval } from "./reap.js";
+import { pollInterval, reapLog } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
 import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
 import type { OnExitResult } from "./registry.js";
@@ -1046,19 +1046,23 @@ export class Muster {
     // macos-terminal opt out by not implementing it.
     if (driver?.schedule && (lifecycle.idleTimeout ?? lifecycle.ttl)) {
       const armed = await driver
-        .schedule(pollInterval(lifecycle), [
-          process.execPath,
-          // ../dist/muster.js, not ./muster.js: this resolves from src/run.ts
-          // under vitest as well as from dist/run.js in the package, landing
-          // on <root>/dist either way. Same idiom as the tmux bootstrap.
-          fileURLToPath(new URL("../dist/muster.js", import.meta.url)),
-          "reap-check",
-          "--home",
-          this.home,
-          "--socket",
-          driver.socketName?.() ?? "muster",
-          entry.launchId,
-        ])
+        .schedule(
+          pollInterval(lifecycle),
+          [
+            process.execPath,
+            // ../dist/muster.js, not ./muster.js: this resolves from src/run.ts
+            // under vitest as well as from dist/run.js in the package, landing
+            // on <root>/dist either way. Same idiom as the tmux bootstrap.
+            fileURLToPath(new URL("../dist/muster.js", import.meta.url)),
+            "reap-check",
+            "--home",
+            this.home,
+            "--socket",
+            driver.socketName?.() ?? "muster",
+            entry.launchId,
+          ],
+          reapLog(this.home),
+        )
         .then(
           () => true,
           () => false,

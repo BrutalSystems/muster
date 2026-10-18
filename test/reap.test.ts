@@ -263,6 +263,7 @@ test("a transient read failure re-arms instead of ending the chain", async () =>
   // I3: a poll colliding with the registry lock, or a bad config.toml, must not
   // permanently disarm a session. Only a decision that means stop, stops.
   const scheduled: number[] = [];
+  const logs: string[] = [];
   const decision = await reapCheck({
     home: "/nonexistent-muster-home",
     socket: "nosuch",
@@ -271,12 +272,15 @@ test("a transient read failure re-arms instead of ending the chain", async () =>
     readEntries: () => {
       throw new RegistryLocked("Registry locked, held by pid 1 for 9s");
     },
-    schedule: async (seconds) => {
+    schedule: async (seconds, _argv, log) => {
       scheduled.push(seconds);
+      logs.push(log);
     },
   });
   expect(decision).toMatchObject({ action: "rearm" });
   expect(scheduled).toHaveLength(1);
+  // Re-armed with its output going to the home's reap log (#65).
+  expect(logs).toEqual(["/nonexistent-muster-home/reap.log"]);
 });
 
 test("a short limit polls often enough to honour it", () => {

@@ -143,6 +143,30 @@ async function main() {
     throw new Error(
       `mcp takes ${ALLOW_LAUNCH}, or one of ${MCP_SUBCOMMANDS.join(", ")}`,
     );
+  // Before Muster.create(), which reads the real home's config: a broken
+  // config.toml failed every poll outside `reapCheck`, whose own catch is what
+  // re-arms, so the session's idle timeout was silently dropped (#65).
+  if (argv[0] === "reap-check") {
+    const { values, positionals } = parseArgs({
+      args: argv.slice(1),
+      allowPositionals: true,
+      strict: true,
+      options: CLI_OPTIONS,
+    });
+    // Hidden: armed by muster itself as a tmux job, never typed by a person.
+    if (positionals.length !== 1 || !values.socket)
+      throw new Error("reap-check requires --socket and one launch id");
+    const { reapCheck } = await import("./reap.js");
+    await reapCheck({
+      home: values.home ?? musterHome(),
+      socket: values.socket,
+      ...(values["stop-now"] ? { stopNow: true } : {}),
+      launchId: positionals[0]!,
+      // The exact command that was armed, so a re-arm reproduces itself.
+      argv: [...process.argv],
+    });
+    return;
+  }
   const muster = await Muster.create();
   let shutdown: Promise<void> | undefined;
   const close = () =>
@@ -543,23 +567,6 @@ async function main() {
       } finally {
         await watcher.close();
       }
-    } else if (command === "reap-check") {
-      // Hidden: armed by muster itself as a tmux job, never typed by a person.
-      // NOTE: `Muster.create()` above already ran against the REAL home before
-      // this dispatch. Harmless (nothing is owned, so `close()` stops nothing)
-      // but it means a broken ~/.muster/config.toml would fail every poll.
-      // Left as-is: moving that create changes every command's startup.
-      if (positionals.length !== 1 || !socket)
-        throw new Error("reap-check requires --socket and one launch id");
-      const { reapCheck } = await import("./reap.js");
-      await reapCheck({
-        home: homeFlag ?? musterHome(),
-        socket,
-        ...(stopNow ? { stopNow: true } : {}),
-        launchId: positionals[0]!,
-        // The exact command that was armed, so a re-arm reproduces itself.
-        argv: [...process.argv],
-      });
     } else throw new Error(topLevelHelp());
   } finally {
     await close();
@@ -574,6 +581,12 @@ main().catch((e) => {
     commandHelp(command)
       ? `\n[muster] see \`muster ${command} --help\` for its options`
       : "";
-  process.stderr.write(`[muster] ${(e as Error).message}${hint}\n`);
+  // reap-check's stderr is the reap log, read later by someone asking which
+  // poll failed and when.
+  const context =
+    command === "reap-check"
+      ? `${new Date().toISOString()} reap-check ${process.argv.slice(3).find((a) => /^[0-9a-f-]{36}$/i.test(a)) ?? "?"}: `
+      : "";
+  process.stderr.write(`[muster] ${context}${(e as Error).message}${hint}\n`);
   process.exitCode = e instanceof RegistryLocked ? RegistryLocked.exitCode : 1;
 });

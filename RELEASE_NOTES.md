@@ -10,6 +10,16 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- The idle and TTL check no longer prints "'<cmd>' returned 1" into whichever
+  tmux pane happens to be active, which is usually some other session (#65).
+  Its output, and the stop it hands off, now go to `~/.muster/reap.log`. An
+  error is logged with its time and launch id, where before it was lost.
+- That check also no longer reads `config.toml` before running. A broken
+  config used to fail every check before it could re-arm, which silently
+  dropped the session's idle timeout.
+
 ## 3.3.3 — 2026-10-18
 
 - A locked registry now exits **75** (`EX_TEMPFAIL`), not 1, from every

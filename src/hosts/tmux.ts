@@ -249,14 +249,19 @@ export class TmuxHost implements TerminalHost {
    * Run `argv` in the background after `seconds`, scheduled by the tmux server
    * itself. This is what lets a lifecycle outlive every muster process: nothing
    * of ours is running between the call and the job.
+   *
+   * The job's output goes to `log`, and it always exits 0. tmux shows a
+   * `run-shell` job's non-zero exit as "'<cmd>' returned 1" in whichever pane
+   * is active on the server, which is someone else's session, and it never
+   * shows the job's stderr, so the error itself was lost (#65).
    */
-  async schedule(seconds: number, argv: string[]): Promise<void> {
+  async schedule(seconds: number, argv: string[], log: string): Promise<void> {
     await this.call([
       "run-shell",
       "-b",
       "-d",
       String(Math.max(1, Math.round(seconds))),
-      tmuxCommand(argv),
+      `${tmuxCommand(argv)} >>${tmuxCommand([log])} 2>&1 || true`,
     ]);
   }
   async launch(opts: LaunchOptions) {

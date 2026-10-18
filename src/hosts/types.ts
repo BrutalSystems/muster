@@ -45,7 +45,8 @@ export interface TerminalHost {
    * outlive their parent needs one, so pty and macos-terminal opt out of
    * lifecycle management by not implementing it.
    */
-  schedule?(seconds: number, argv: string[]): Promise<void>;
+  /** `log` receives the job's stdout and stderr (#65). */
+  schedule?(seconds: number, argv: string[], log: string): Promise<void>;
   /** Retitle a live window. Optional: only a host that owns one can. */
   setTitle?(hostRef: string, text: string): Promise<void>;
   /** The host's own addressing handle, for a command that must name it. */

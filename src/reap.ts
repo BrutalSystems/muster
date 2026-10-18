@@ -1,6 +1,15 @@
+import { join } from "node:path";
 import { Registry, type Entry } from "./registry.js";
 import type { SessionState } from "./hosts/tmux.js";
 
+/**
+ * Where the reaper's tmux jobs write their output, under muster's home. Not
+ * launches.jsonl: that is one JSON event per line, and raw shell output would
+ * break every reader of it.
+ */
+export function reapLog(home: string): string {
+  return join(home, "reap.log");
+}
 export type ReapDecision =
   | { action: "reap" }
   | { action: "rearm"; seconds: number }
@@ -70,7 +79,7 @@ export type ReapOptions = {
   /** Injected by tests; production reads real tmux and a real registry. */
   state?: SessionState | null;
   readEntries?: () => Promise<Entry[]> | Entry[];
-  schedule?: (seconds: number, argv: string[]) => Promise<void>;
+  schedule?: (seconds: number, argv: string[], log: string) => Promise<void>;
   spawn?: (exec: string, args: string[]) => void;
 };
 
@@ -90,11 +99,11 @@ export async function reapCheck(opts: ReapOptions): Promise<ReapDecision> {
   const rearm = async (seconds: number): Promise<ReapDecision> => {
     const schedule =
       opts.schedule ??
-      (async (s: number, argv: string[]) => {
+      (async (s: number, argv: string[], log: string) => {
         const { TmuxHost } = await import("./hosts/tmux.js");
-        await new TmuxHost(opts.socket).schedule(s, argv);
+        await new TmuxHost(opts.socket).schedule(s, argv, log);
       });
-    await schedule(seconds, opts.argv);
+    await schedule(seconds, opts.argv, reapLog(opts.home));
     return { action: "rearm", seconds };
   };
   try {
@@ -124,9 +133,22 @@ export async function reapCheck(opts: ReapOptions): Promise<ReapDecision> {
         ((e: string, args: string[]) => {
           // Detached and unref'd so it survives the tmux server exiting as the
           // session it is stopping goes away.
-          void import("node:child_process").then(({ spawn }) =>
-            spawn(e, args, { detached: true, stdio: "ignore" }).unref(),
-          );
+          // Its output goes to the reap log too: with stdio ignored, a stop
+          // that failed left no trace anywhere.
+          void Promise.all([
+            import("node:child_process"),
+            import("node:fs"),
+          ]).then(([{ spawn }, { openSync, closeSync }]) => {
+            let out: number | "ignore" = "ignore";
+            try {
+              out = openSync(reapLog(opts.home), "a", 0o600);
+            } catch {}
+            spawn(e, args, {
+              detached: true,
+              stdio: ["ignore", out, out],
+            }).unref();
+            if (out !== "ignore") closeSync(out);
+          });
         });
       spawnFn(exec, [...opts.argv.slice(1), "--stop-now"]);
     }
