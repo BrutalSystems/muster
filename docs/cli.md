@@ -49,7 +49,8 @@ that value after `--`; OpenCode sessions use the dedicated `--prompt` value.
 existing conversation instead of starting one. Everything else about the
 launch is as usual — level, `--open`, `--title`, `--model`, `--on-exit`, and
 `wait`/`stop`/`output`/`list` afterwards — and the run reports the resumed
-session id, not a new one. Add `--fork-session` to continue it under a new id,
+session id, not a new one: if Claude registers any other session, the launch
+fails. Add `--fork-session` to continue it under a new id,
 leaving the original untouched.
 
 Muster refuses, before anything is reserved:
@@ -58,6 +59,8 @@ Muster refuses, before anything is reserved:
   picker, which nobody is there to answer;
 - a conversation that is not in the config dir the launch runs in
   (`$CLAUDE_CONFIG_DIR/projects/*/<id>.jsonl`);
+- a conversation recorded in a different directory from `--cwd` (Claude would
+  resume it anyway, with history about another tree);
 - a session that is still running, since two processes on one transcript
   interleave it and register the same id twice — `--fork-session` is allowed,
   because it only reads the original;

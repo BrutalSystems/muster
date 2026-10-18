@@ -63,7 +63,7 @@ if(argv.includes('app-server')){
   // As Claude 2.1.302 does: a resumed session registers under the resumed id,
   // a forked one under a fresh id.
   const resumed=argv.indexOf('--resume');
-  const id=resumed>=0&&!argv.includes('--fork-session')?argv[resumed+1]:randomUUID(),prompt=argv[argv.length-1],isTask=argv.includes('exec')||argv.includes('-p');
+  const id=resumed>=0&&!argv.includes('--fork-session')&&process.env.MUSTER_FAKE_IGNORE_RESUME!=='1'?argv[resumed+1]:randomUUID(),prompt=argv[argv.length-1],isTask=argv.includes('exec')||argv.includes('-p');
   const state={id,pid:process.pid,name:prompt,cwd:process.cwd(),source:isTask?'exec':'cli',readyAt:Date.now()+Number(process.env.MUSTER_FAKE_READY_MS||0)};
   if(process.env.MUSTER_FAKE_SOURCE)state.source=process.env.MUSTER_FAKE_SOURCE;
   // `env` is recorded so a test can assert what the agent was actually spawned

@@ -1201,6 +1201,17 @@ export class Muster {
                 )
               : await resolveClaude(root.pid, resolveEnv, deadline);
         if (identity) {
+          // The answer #10 asks for: a resume that registered some other
+          // session is a launch that failed, never a new session reported as
+          // the old one. Not fatal at once, like every other diagnosis here,
+          // in case the registry is read mid-write.
+          const resume = req.runtime === "claude" ? resolveResume(req) : null;
+          if (resume && (identity.id === resume.id) === resume.fork)
+            throw new Error(
+              resume.fork
+                ? `--fork-session registered the original session ${resume.id} instead of a new one`
+                : `Claude registered session ${identity.id} instead of resuming ${resume.id}`,
+            );
           diagnostic =
             req.runtime === "codex"
               ? "thread id reserved but no rollout"
@@ -1372,7 +1383,7 @@ export class Muster {
         throw new Error(
           "--resume cannot be combined with an identity: the identity's config dir holds none of this profile's conversations",
         );
-      assertResumable(resume, agentBase);
+      assertResumable(resume, agentBase, effective.cwd);
     }
     let argv = plannedArgv;
     let codexPolicy: string[] = [];

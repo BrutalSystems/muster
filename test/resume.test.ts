@@ -103,14 +103,36 @@ async function profile(root: string) {
 test("a resume needs the conversation in the profile the launch opens", async () => {
   const f = await fixture();
   const { configDir, env } = await profile(f.root);
-  expect(() => assertResumable({ id: ID, fork: false }, env)).toThrow(
+  expect(() => assertResumable({ id: ID, fork: false }, env, f.root)).toThrow(
     /No Claude conversation/,
   );
   await writeFile(
     join(configDir, "projects", "-some-project", ID + ".jsonl"),
     "",
   );
-  expect(() => assertResumable({ id: ID, fork: false }, env)).not.toThrow();
+  expect(() =>
+    assertResumable({ id: ID, fork: false }, env, f.root),
+  ).not.toThrow();
+});
+
+test("a conversation recorded in another directory is not resumed here", async () => {
+  const f = await fixture();
+  const { configDir, env } = await profile(f.root);
+  const other = join(f.root, "elsewhere");
+  await mkdir(other);
+  await writeFile(
+    join(configDir, "projects", "-some-project", ID + ".jsonl"),
+    JSON.stringify({ type: "queue-operation", sessionId: ID }) +
+      "\n" +
+      JSON.stringify({ sessionId: ID, cwd: other }) +
+      "\n",
+  );
+  expect(() => assertResumable({ id: ID, fork: false }, env, f.root)).toThrow(
+    /was recorded in .*elsewhere.*--cwd/,
+  );
+  expect(() =>
+    assertResumable({ id: ID, fork: false }, env, other),
+  ).not.toThrow();
 });
 
 test("a running session is not resumed twice, but may be forked", async () => {
@@ -125,23 +147,23 @@ test("a running session is not resumed twice, but may be forked", async () => {
     JSON.stringify({ pid: 4242, sessionId: ID }),
   );
   expect(() =>
-    assertResumable({ id: ID, fork: false }, env, () => true),
+    assertResumable({ id: ID, fork: false }, env, f.root, () => true),
   ).toThrow(/is running \(pid 4242\)/);
   // A record left by a process that has exited does not hold the session.
   expect(() =>
-    assertResumable({ id: ID, fork: false }, env, () => false),
+    assertResumable({ id: ID, fork: false }, env, f.root, () => false),
   ).not.toThrow();
   expect(() =>
-    assertResumable({ id: ID, fork: true }, env, () => true),
+    assertResumable({ id: ID, fork: true }, env, f.root, () => true),
   ).not.toThrow();
 });
 
-async function launcher() {
-  const f = await fixture();
+async function launcher(extra: Record<string, string> = {}) {
+  const f = await fixture(extra);
   const { configDir } = await profile(f.root);
   await writeFile(
     join(configDir, "projects", "-some-project", ID + ".jsonl"),
-    "",
+    JSON.stringify({ sessionId: ID, cwd: f.root }) + "\n",
   );
   const env = { ...f.env, CLAUDE_CONFIG_DIR: configDir };
   const m = await Muster.create({
@@ -240,5 +262,32 @@ test("a refused resume leaves nothing reserved", async () => {
     expect(await m.list()).toEqual([]);
   } finally {
     await m.close();
+  }
+}, 15000);
+
+test("a resume that registers some other session fails, never reports a new one", async () => {
+  const { f, m } = await launcher({ MUSTER_FAKE_IGNORE_RESUME: "1" });
+  await writeFile(join(f.home, "config.toml"), "launch_timeout_sec = 2\n");
+  const m2 = await Muster.create({
+    home: f.home,
+    env: { ...f.env, CLAUDE_CONFIG_DIR: join(f.root, "profile") },
+    drivers: [new PtyHost()],
+  });
+  await m.close();
+  try {
+    await expect(
+      m2.run({
+        runtime: "claude",
+        prompt: "carry on",
+        cwd: f.root,
+        host: "pty",
+        resume: ID,
+      }),
+    ).rejects.toThrow(/instead of resuming/);
+    expect(
+      (await m2.list("session")).some((r: any) => r.state === "running"),
+    ).toBe(false);
+  } finally {
+    await m2.close();
   }
 }, 15000);

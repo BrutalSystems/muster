@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -507,19 +515,28 @@ export function resolveResume(req: RunRequest): ResolvedResume | null {
 export function assertResumable(
   resume: ResolvedResume,
   env: NodeJS.ProcessEnv,
+  cwd: string,
   alive: (pid: number) => boolean = pidAlive,
 ): void {
   const configDir = claudeConfigDir(env);
   const projects = join(configDir, "projects");
-  let found = false;
+  let transcript: string | undefined;
   try {
-    found = readdirSync(projects).some((dir) =>
-      existsSync(join(projects, dir, resume.id + ".jsonl")),
-    );
+    transcript = readdirSync(projects)
+      .map((dir) => join(projects, dir, resume.id + ".jsonl"))
+      .find((file) => existsSync(file));
   } catch {}
-  if (!found)
+  if (!transcript)
     throw new Error(
       `No Claude conversation ${resume.id} in ${configDir}; --resume reopens a session recorded in the profile this launch runs in`,
+    );
+  // Claude 2.1.302 resumes a conversation from any directory, so this is
+  // muster's to refuse (#10): the history would describe one tree while the
+  // agent works in another. Unknown when the transcript names no cwd.
+  const recorded = transcriptCwd(transcript);
+  if (recorded !== undefined && realPath(recorded) !== realPath(cwd))
+    throw new Error(
+      `Claude session ${resume.id} was recorded in ${recorded}, not ${cwd}; resume it with --cwd ${recorded}`,
     );
   if (resume.fork) return;
   const sessions = claudeSessionsDir(env);
@@ -543,6 +560,37 @@ export function assertResumable(
       throw new Error(
         `Claude session ${resume.id} is running (pid ${pid}); stop it before resuming it, or pass --fork-session to continue it under a new id`,
       );
+  }
+}
+/** The first `cwd` a transcript records, read from its head: a transcript can
+ *  run to many megabytes, and the cwd is on its first message. */
+function transcriptCwd(file: string): string | undefined {
+  let head = "";
+  try {
+    const fd = openSync(file, "r");
+    try {
+      const buf = Buffer.alloc(1 << 20);
+      head = buf.toString("utf8", 0, readSync(fd, buf, 0, buf.length, 0));
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return undefined;
+  }
+  for (const line of head.split("\n")) {
+    if (!line.includes('"cwd"')) continue;
+    try {
+      const { cwd } = JSON.parse(line) as { cwd?: unknown };
+      if (typeof cwd === "string" && cwd) return cwd;
+    } catch {}
+  }
+  return undefined;
+}
+function realPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
   }
 }
 function pidAlive(pid: number): boolean {
