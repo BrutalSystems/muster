@@ -166,6 +166,23 @@ export class IdempotencyKeyReuse extends Error {
  */
 const UNOWNED_LOCK_MS = 60_000;
 let self: ProcessRef | undefined;
+/** Statuses whose process is over: such an entry no longer holds its id. */
+const FINISHED: readonly Entry["status"][] = ["exited", "failed", "stopped"];
+/**
+ * The entry a durable id names. One id can have several since `--resume`: the
+ * launches that ran a session before, now finished, and the one running it
+ * now. The live one is meant, else the newest; two live ones cannot arise,
+ * because `update` refuses a second live holder of an id.
+ */
+export function currentEntry(entries: Entry[]): Entry | undefined {
+  const live = entries.filter((e) => !FINISHED.includes(e.status));
+  if (live.length > 1)
+    throw new Error("Ambiguous durable id; update by launchId");
+  return (
+    live[0] ??
+    [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
+  );
+}
 export class Registry {
   /** `lockWait` is how long to wait for a live holder; tests shorten it. */
   constructor(
@@ -447,10 +464,8 @@ export class Registry {
   async update(id: string, patch: Partial<Entry>): Promise<Entry> {
     return this.transaction(async (entries) => {
       const byLaunch = entries.find((e) => e.launchId === id);
-      const durable = entries.filter((e) => e.id === id);
-      if (!byLaunch && durable.length > 1)
-        throw new Error("Ambiguous durable id; update by launchId");
-      const entry = byLaunch ?? durable[0];
+      const entry =
+        byLaunch ?? currentEntry(entries.filter((e) => e.id === id));
       if (!entry) throw new Error(`Unknown launch ${id}`);
       if ("requester" in patch)
         throw new Error("requester is recorded once and cannot be updated");
@@ -458,7 +473,10 @@ export class Registry {
         patch.id &&
         entries.some(
           (e) =>
-            e !== entry && e.runtime === entry.runtime && e.id === patch.id,
+            e !== entry &&
+            e.runtime === entry.runtime &&
+            e.id === patch.id &&
+            !FINISHED.includes(e.status),
         )
       )
         throw new Error("Durable identity already registered");

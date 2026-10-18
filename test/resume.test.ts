@@ -11,6 +11,7 @@ import {
 import { configSchema } from "../src/config.js";
 import { Muster } from "../src/run.js";
 import { PtyHost } from "../src/hosts/pty.js";
+import { Registry } from "../src/registry.js";
 import { fixture } from "./helpers.js";
 import { asSession, asTask } from "./narrow.js";
 
@@ -291,3 +292,51 @@ test("a resume that registers some other session fails, never reports a new one"
     await m2.close();
   }
 }, 15000);
+
+test("a session muster ran before can be resumed, and its id names the new launch", async () => {
+  const { f, m } = await launcher();
+  try {
+    const first = asSession(
+      await m.run({
+        runtime: "claude",
+        prompt: "first",
+        cwd: f.root,
+        host: "pty",
+        resume: ID,
+      }),
+    );
+    await m.stop(first.session_id!);
+    const again = asSession(
+      await m.run({
+        runtime: "claude",
+        prompt: "again",
+        cwd: f.root,
+        host: "pty",
+        resume: ID,
+      }),
+    );
+    expect(again.session_id).toBe(ID);
+    expect(again.pid).not.toBe(first.pid);
+    // The reaper stops by launch id: the old launch's id must not reach the
+    // launch running the session now.
+    const [old] = (await new Registry(f.home).all()).filter(
+      (e) => e.id === ID && e.status === "stopped",
+    );
+    await m.stop(old!.launchId);
+    expect(
+      (await m.list("session")).some(
+        (r: any) =>
+          r.session_id === ID && r.pid === again.pid && r.state !== "stopped",
+      ),
+    ).toBe(true);
+    // By durable id, stop reaches the launch running it now, not the old one.
+    await m.stop(ID);
+    const entries = (await m.list("session")).filter(
+      (r: any) => r.session_id === ID,
+    );
+    expect(entries.every((r: any) => r.state !== "running")).toBe(true);
+    expect(entries.length).toBe(2);
+  } finally {
+    await m.close();
+  }
+}, 20000);

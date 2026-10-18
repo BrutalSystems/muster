@@ -160,7 +160,9 @@ async function stopSession(home: string, socket: string, launchId: string) {
     const entry = (await new Registry(home).all()).find(
       (e) => e.launchId === launchId,
     );
-    if (entry) await muster.stop(entry.id);
+    // By launch id: since --resume, the durable id may name a newer launch of
+    // the same session, which this check was not armed for.
+    if (entry) await muster.stop(entry.launchId);
   } finally {
     await muster.close();
   }

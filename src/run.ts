@@ -52,7 +52,7 @@ import {
 } from "./identity-store.js";
 import { resolveCredential, type Credential } from "./identity-token.js";
 import { copyIdentity, identityEnv } from "./identity-copy.js";
-import { Registry, type Entry } from "./registry.js";
+import { currentEntry, Registry, type Entry } from "./registry.js";
 import { LaunchLog } from "./log.js";
 import { hosts, selectHost } from "./hosts/index.js";
 import { AGENTS } from "./agents.js";
@@ -1660,12 +1660,21 @@ export class Muster {
   }
   private async find(id: string): Promise<Entry> {
     const all = await this.registry.all();
+    // A launch id names exactly one launch, so a caller that holds one (the
+    // reaper) can never reach a later launch of the same resumed session.
+    const launch = all.find((e) => e.launchId === id);
+    if (launch) return launch;
     const exact = all.filter((e) => e.id === id);
     if (exact.length === 1) return exact[0]!;
-    if (exact.length > 1)
-      throw new Error(
-        `Ambiguous durable id: ${exact.map((e) => e.runtime + ":" + e.id).join(", ")}`,
-      );
+    // The same session under two runtimes is ambiguous. Under one, it was
+    // resumed: the launch running it now, else the latest, is the one meant.
+    if (exact.length > 1) {
+      if (new Set(exact.map((e) => e.runtime)).size > 1)
+        throw new Error(
+          `Ambiguous durable id: ${exact.map((e) => e.runtime + ":" + e.id).join(", ")}`,
+        );
+      return currentEntry(exact)!;
+    }
     const peers = all.filter(
       (e) => e.kind === "session" && e.status === "running" && e.peer,
     );

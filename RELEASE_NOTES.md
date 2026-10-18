@@ -10,6 +10,17 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `--resume` now works on a session muster has launched before. The new launch
+  failed with "Durable identity already registered", because the finished
+  launch still held the session id. A finished launch (exited, failed or
+  stopped) now gives its id up. A running one still holds it. `stop`, `wait`,
+  `title` and the other commands that take an id reach the launch running the
+  session now, or the latest if none is running. A launch id names only its
+  own launch, and an idle or TTL reap stops by launch id, so a timer armed for
+  an old launch cannot stop the resumed one. `list` shows both launches.
+
 ## 3.3.1 — 2026-10-18
 
 - `--resume` now refuses a conversation recorded in another directory, and
