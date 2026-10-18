@@ -16,6 +16,9 @@ as patches, so do not read an old entry under the new rule.
   to Codex, so a launch can grant an extra writable directory or set a config
   value. Every other runtime option is still refused, and `-C` is not read as
   `-c`.
+- `muster run claude … --` now passes `--name` through to Claude, so a launch
+  can set its session's display name. Every other runtime option is still
+  refused.
 
 ## 3.1.2 — 2026-10-17
 

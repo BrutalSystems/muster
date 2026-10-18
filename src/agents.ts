@@ -117,7 +117,10 @@ export const AGENTS: Record<Runtime, AgentCapabilities> = {
   claude: {
     configHomeVar: "CLAUDE_CONFIG_DIR",
     enforcement: "kernel",
-    runtimeOptions: { forwarded: ["--effort"], consumed: MODEL_FLAGS },
+    runtimeOptions: {
+      forwarded: ["--effort", "--name"],
+      consumed: MODEL_FLAGS,
+    },
     trustWorkspace: setWorkspaceTrust,
     beforeStop: null,
     refreshMetadata: refreshClaude,

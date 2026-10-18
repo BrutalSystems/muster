@@ -69,7 +69,7 @@ opencode), `--mcp NAME` (repeatable, replaces `default_mcp`), `--no-mcp`,
 `--idle-timeout 30m`, `--ttl 4h`, `--title TEXT`, `--project NAME` (instead of
 `--cwd`), `--identity NAME`, `--request-key KEY`, `--open [terminal|iterm2|ghostty]`,
 `--format human`. Runtime flags go after `--`, and only an allowlist passes
-(`--model`/`-m`; Claude's `--effort`; OpenCode's `--agent`, `--variant`).
+(`--model`/`-m`; Claude's `--effort`, `--name`; OpenCode's `--agent`, `--variant`).
 
 Refused rather than resolved: two of `--read-only`/`--write-here`/`--unrestricted`, `--level`
 and `--permissions`/`--sandbox`;

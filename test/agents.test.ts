@@ -54,6 +54,13 @@ test("the rows say what the code they replace said", () => {
     "high",
   ]);
   expect(() => runtimeArgs(req("codex", ["--effort", "high"]))).toThrow();
+  // --name sets Claude's session display name, which the tincan peer name follows.
+  expect(runtimeArgs(req("claude", ["--name", "build-1"]))).toEqual([
+    "--name",
+    "build-1",
+  ]);
+  expect(() => runtimeArgs(req("codex", ["--name", "build-1"]))).toThrow();
+  expect(() => runtimeArgs(req("opencode", ["--name", "build-1"]))).toThrow();
   expect(runtimeArgs(req("opencode", ["--model", "a/b"]))).toEqual([
     "--model",
     "a/b",
