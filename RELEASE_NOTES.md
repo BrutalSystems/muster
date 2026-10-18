@@ -10,6 +10,14 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- An agent hosted in tmux now gets its own `TMUX` and `TMUX_PANE`. The launch
+  environment drops the caller's `TMUX`, because it names the caller's server,
+  so the agent could not tell which pane it was in and a terminal could not
+  find the window attached to it. The bootstrap now passes through the values
+  tmux gave it. Under the pty host they are absent, and nothing is invented.
+
 ## 3.2.0 — 2026-10-18
 
 - `--open` can open a session in any terminal you configure. Define it under
