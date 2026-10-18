@@ -10,6 +10,13 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `muster run claude … --` now passes `--plugin-dir` through to Claude, so a launch
+  can load a plugin folder for that session only. A sealed launch (`--read-only`,
+  `--write-here`, `--unrestricted`) refuses it, and every other runtime option is
+  still refused.
+
 ## 3.3.4 — 2026-10-18
 
 - The idle and TTL check no longer prints "'<cmd>' returned 1" into whichever

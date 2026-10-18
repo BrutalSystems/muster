@@ -114,6 +114,24 @@ test("prompt is mandatory and cannot be interpreted as a flag or shell program",
     failIfUnavailable: true,
   });
 });
+test("--plugin-dir reaches a normal claude launch and is refused by a sealed one", async () => {
+  const config = await loadConfig(
+    await mkdtemp(join(tmpdir(), "muster-policy-")),
+  );
+  const args = ["--plugin-dir", "/tmp/plugin"];
+  const normal = launchArgs(
+    runSchema.parse({ runtime: "claude", prompt: "hi", args }),
+    config,
+  );
+  expect(normal[normal.indexOf("--plugin-dir") + 1]).toBe("/tmp/plugin");
+  for (const level of ["read", "work"] as const)
+    expect(() =>
+      launchArgs(
+        runSchema.parse({ runtime: "claude", prompt: "hi", level, args }),
+        config,
+      ),
+    ).toThrow(/sealed launch loads no plugins/);
+});
 test("log records survive a new reader and include requester", async () => {
   const home = await mkdtemp(join(tmpdir(), "muster-log-"));
   await new LaunchLog(home).write({

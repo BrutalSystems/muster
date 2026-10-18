@@ -884,6 +884,12 @@ export function launchArgs(
   // builders, which carry the model in their config overlay.
   const model = resolved ? ["--model", resolved.model] : [];
   const policy = resolvePermissions(req, config);
+  // A plugin folder brings its own skills, agents, hooks and MCP servers. A
+  // sealed launch chose exactly what it loads, so it takes none of them.
+  if (policy.permissions !== "normal" && extra.includes("--plugin-dir"))
+    throw new Error(
+      "Runtime option refused: --plugin-dir (a sealed launch loads no plugins)",
+    );
   if (policy.permissions === "normal") {
     // `resolvePermissions` refuses this outside claude; restated so the codex
     // branch below can never read `normal` as one of its own modes.

@@ -61,6 +61,17 @@ test("the rows say what the code they replace said", () => {
   ]);
   expect(() => runtimeArgs(req("codex", ["--name", "build-1"]))).toThrow();
   expect(() => runtimeArgs(req("opencode", ["--name", "build-1"]))).toThrow();
+  // --plugin-dir loads a plugin folder for that session only (Claude).
+  expect(runtimeArgs(req("claude", ["--plugin-dir", "/tmp/plugin"]))).toEqual([
+    "--plugin-dir",
+    "/tmp/plugin",
+  ]);
+  expect(() =>
+    runtimeArgs(req("codex", ["--plugin-dir", "/tmp/plugin"])),
+  ).toThrow();
+  expect(() =>
+    runtimeArgs(req("opencode", ["--plugin-dir", "/tmp/plugin"])),
+  ).toThrow();
   expect(runtimeArgs(req("opencode", ["--model", "a/b"]))).toEqual([
     "--model",
     "a/b",
