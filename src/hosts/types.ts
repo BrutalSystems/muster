@@ -3,7 +3,12 @@ export type HostCapabilities = {
   attachable: boolean;
   survivesParentExit: boolean;
 };
-export type TerminalApp = "terminal" | "iterm2" | "ghostty";
+export const builtinTerminals = ["terminal", "iterm2", "ghostty"] as const;
+export type BuiltinTerminal = (typeof builtinTerminals)[number];
+/** A built-in app, or the name of one defined under `[open.apps]`. */
+export type TerminalApp = string;
+/** An `--open` target defined in config: an argv template, never a shell string. */
+export type OpenerCommand = string[];
 export type HostId = "tmux" | "pty" | "macos-terminal";
 export type LaunchOptions = {
   argv: string[];
@@ -25,11 +30,15 @@ export interface TerminalHost {
   launch(opts: LaunchOptions): Promise<{ hostRef: string; pid: number }>;
   stop(hostRef: string): Promise<void>;
   list(): Promise<Array<{ hostRef: string; pid: number; label: string }>>;
-  openAvailable?(terminal?: TerminalApp): Promise<boolean>;
+  openAvailable?(
+    terminal?: TerminalApp,
+    opener?: OpenerCommand,
+  ): Promise<boolean>;
   open?(
     hostRef: string,
     deadline: number,
     terminal?: TerminalApp,
+    opener?: OpenerCommand,
   ): Promise<void>;
   /**
    * Schedule a delayed background command. Optional: only a host whose sessions

@@ -67,7 +67,7 @@ export const COMMANDS: Command[] = [
       ["--identity NAME", "run as a configured identity"],
       [
         "--open [APP]",
-        "display the tmux session in a terminal (macOS); APP is terminal, iterm2 or ghostty, defaulting to the configured terminal",
+        'display the tmux session in a terminal; APP is terminal, iterm2, ghostty (macOS) or a name from [open.apps] in config.toml, defaulting to the configured terminal. An app is an argv template, e.g. [open.apps.kitty] command = ["kitty", "-e", "{tmux}", "-L", "{server}", "attach-session", "-t", "{target}"]',
       ],
       [
         "--terminal APP",

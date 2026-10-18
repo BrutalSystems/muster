@@ -576,9 +576,10 @@ export class Muster {
       req.kind === "session"
         ? await selectHost(req.open ? "tmux" : requestedHost, this.drivers)
         : undefined;
+    const opener = this.config.open.apps[terminal]?.command;
     if (
       req.open &&
-      (!driver?.open || !(await driver.openAvailable?.(terminal)))
+      (!driver?.open || !(await driver.openAvailable?.(terminal, opener)))
     )
       throw new Error(
         `--open requires the selected terminal (${terminal}) installed on macOS and tmux`,
@@ -1282,7 +1283,12 @@ export class Muster {
           } as SessionPeer;
           if (req.open) {
             openingTerminal = true;
-            await driver!.open!(launched.hostRef, deadline, terminal);
+            await driver!.open!(
+              launched.hostRef,
+              deadline,
+              terminal,
+              this.config.open.apps[terminal]?.command,
+            );
             peer.terminal_opened = true;
             peer.terminal = terminal;
           }

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { mcpName, mcpServerSchema } from "./mcp.js";
 import { pluginName, pluginSchema } from "./plugins.js";
 import { openCodeSectionSchema } from "./providers.js";
+import { builtinTerminals } from "./hosts/types.js";
 import { identityNameSchema } from "./identity-store.js";
 import { authoritySchema, subjectSchema } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
@@ -72,6 +73,52 @@ export const requesterEnrolmentSchema = z
   })
   .strict();
 export type RequesterEnrolment = z.infer<typeof requesterEnrolmentSchema>;
+const openerPlaceholder = /\{([^{}]*)\}/g;
+const openerPlaceholders = new Set(["tmux", "server", "target"]);
+/**
+ * An extra `--open` target: the argv to run, with `{tmux}`, `{server}` and
+ * `{target}` filled in per launch. An argv array and not a string, so a value
+ * is never re-parsed by a shell; a program that needs one says so itself, as in
+ * `["sh", "-c", "{tmux} -L {server} attach -t {target}"]`.
+ */
+const openerSchema = z
+  .object({
+    command: z
+      .array(z.string().min(1))
+      .min(1)
+      .superRefine((argv, ctx) => {
+        for (const arg of argv)
+          for (const m of arg.matchAll(openerPlaceholder))
+            if (!openerPlaceholders.has(m[1]!))
+              ctx.addIssue({
+                code: "custom",
+                message: `unknown placeholder {${m[1]}}; use {tmux}, {server} or {target}`,
+              });
+        if (!argv.some((a) => a.includes("{target}")))
+          ctx.addIssue({
+            code: "custom",
+            message: "command must contain {target}",
+          });
+      }),
+  })
+  .strict();
+const openSectionSchema = z
+  .object({
+    apps: z
+      .record(
+        z
+          .string()
+          .regex(/^[a-zA-Z0-9_-]+$/)
+          .refine(
+            (name) => !["auto", ...builtinTerminals].includes(name as "auto"),
+            "built-in terminal names cannot be redefined",
+          ),
+        openerSchema,
+      )
+      .default({}),
+  })
+  .strict()
+  .default({});
 /** Raw strings, not parsed durations: a bad value in config.toml must fail with
  *  the same message a bad flag does, and that parser lives in one place. */
 const sessionSectionSchema = z
@@ -101,9 +148,8 @@ export const configSchema = z
      * hardcoded to Terminal.app, so a developer on Ghostty or iTerm2 had to pass
      * `--terminal` on every launch with no way to state it once.
      */
-    terminal: z
-      .enum(["auto", "terminal", "iterm2", "ghostty"])
-      .default("terminal"),
+    terminal: z.string().min(1).default("terminal"),
+    open: openSectionSchema,
     launch_timeout_sec: z.number().finite().positive().max(600).default(30),
     max_concurrent: z.number().int().positive().max(1000).default(4),
     allowed_roots: z.array(z.string().min(1)).default([]),

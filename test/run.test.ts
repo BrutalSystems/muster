@@ -432,6 +432,53 @@ test("open errors clean up the launched session; unsupported combinations never 
   }
 }, 10000);
 
+test("--open uses the configured default app and hands its argv template to the host", async () => {
+  const f = await fixture();
+  await writeFile(
+    join(f.home, "config.toml"),
+    `terminal = "wez"\n[open.apps.wez]\ncommand = ["wez", "{server}", "{target}"]\n`,
+  );
+  const host = new TmuxHost(testServer("opener"));
+  const seen: unknown[] = [];
+  host.openAvailable = async (terminal, opener) => {
+    seen.push(["available", terminal, opener]);
+    return true;
+  };
+  host.open = async (_ref, _deadline, terminal, opener) => {
+    seen.push(["open", terminal, opener]);
+  };
+  const m = await Muster.create({ home: f.home, env: f.env, drivers: [host] });
+  try {
+    await expect(
+      m.run({
+        runtime: "claude",
+        prompt: "viewer",
+        cwd: f.root,
+        open: true,
+        terminal: "nope",
+      }),
+    ).rejects.toThrow(/Unknown terminal "nope"/);
+    const peer = asSessionOf(
+      await m.run({
+        runtime: "claude",
+        prompt: "viewer",
+        cwd: f.root,
+        open: true,
+      }),
+      "claude-code",
+    );
+    const command = ["wez", "{server}", "{target}"];
+    expect(seen).toEqual([
+      ["available", "wez", command],
+      ["open", "wez", command],
+    ]);
+    expect(peer).toMatchObject({ terminal: "wez", terminal_opened: true });
+    await m.stop(peer.session_id);
+  } finally {
+    await m.close();
+  }
+}, 10000);
+
 test("terminal selection requires open and persists the selected viewer", async () => {
   const f = await fixture();
   const host = new TmuxHost(testServer("viewer"));
@@ -526,7 +573,9 @@ test("a claude launch that never registers stops blaming trust once the director
   await mkdir(cfg, { recursive: true });
   await writeFile(
     join(cfg, ".claude.json"),
-    JSON.stringify({ projects: { [f.root]: { hasTrustDialogAccepted: true } } }),
+    JSON.stringify({
+      projects: { [f.root]: { hasTrustDialogAccepted: true } },
+    }),
   );
   const m = await Muster.create({
     home: f.home,

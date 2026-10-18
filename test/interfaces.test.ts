@@ -138,7 +138,7 @@ test("MCP uses the same tools, no stdout diagnostics, and closing stops owned pt
     expect(
       tools.tools.find((t) => t.name === "run")?.inputSchema.properties
         ?.terminal,
-    ).toMatchObject({ enum: ["auto", "terminal", "iterm2", "ghostty"] });
+    ).toMatchObject({ type: "string" });
     expect(
       tools.tools.find((t) => t.name === "run")?.inputSchema.properties?.mcp,
     ).toMatchObject({ type: "array" });

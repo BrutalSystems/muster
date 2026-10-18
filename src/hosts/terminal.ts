@@ -1,6 +1,7 @@
 import { access, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import type { TerminalApp } from "./types.js";
+import { builtinTerminals } from "./types.js";
+import type { OpenerCommand, TerminalApp } from "./types.js";
 import { constants } from "node:fs";
 import { delimiter, join } from "node:path";
 import { command } from "../identity/processes.js";
@@ -8,7 +9,9 @@ import { command } from "../identity/processes.js";
 export async function terminalAvailable(
   platform: string = process.platform,
   terminal: TerminalApp = "terminal",
+  opener?: OpenerCommand,
 ) {
+  if (!isBuiltin(terminal)) return opener ? openerAvailable(opener) : false;
   if (platform !== "darwin") return false;
   try {
     if (terminal === "terminal") {
@@ -36,6 +39,41 @@ export async function terminalAvailable(
     return false;
   }
 }
+function isBuiltin(terminal: string) {
+  return (builtinTerminals as readonly string[]).includes(terminal);
+}
+/** The command a configured opener runs: an absolute path, or a name on PATH. */
+async function openerExecutable(file: string) {
+  const dirs = file.includes("/")
+    ? [""]
+    : (process.env.PATH ?? "").split(delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    const path = file.includes("/") ? file : join(dir, file);
+    try {
+      await access(path, constants.X_OK);
+      return path;
+    } catch {}
+  }
+}
+async function openerAvailable(opener: OpenerCommand) {
+  return (await openerExecutable(opener[0]!)) !== undefined;
+}
+/**
+ * A configured opener's argv with the placeholders filled in. The values are
+ * validated by the caller; each argv element stays one element, so nothing here
+ * is parsed by a shell.
+ */
+export function openerArgv(
+  opener: OpenerCommand,
+  values: { tmux: string; server: string; target: string },
+) {
+  return opener.map((arg) =>
+    arg.replace(
+      /\{(tmux|server|target)\}/g,
+      (_, key: keyof typeof values) => values[key],
+    ),
+  );
+}
 export async function tmuxExecutable() {
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
@@ -53,12 +91,33 @@ export async function openTerminal(
   hostRef: string,
   deadline: number,
   terminal: TerminalApp = "terminal",
+  opener?: OpenerCommand,
 ) {
   if (!/^[a-zA-Z0-9_-]+$/.test(server) || !/^@\d+$/.test(hostRef))
     throw new Error("Invalid tmux terminal target");
   if (Date.now() >= deadline)
     throw new Error("Launch deadline expired before opening terminal");
   const timeout = Math.max(1, Math.min(10000, deadline - Date.now()));
+  if (!isBuiltin(terminal)) {
+    if (!opener)
+      throw new Error(`No opener configured for terminal "${terminal}"`);
+    const [file, ...args] = openerArgv(opener, {
+      tmux,
+      server,
+      target: hostRef,
+    });
+    const found = await openerExecutable(file!);
+    if (!found)
+      throw new Error(`Opener "${terminal}": cannot find command "${file}"`);
+    try {
+      await command(found, args, timeout);
+    } catch (e) {
+      throw new Error(
+        `Opener "${terminal}" failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+    return;
+  }
   if (terminal === "ghostty") {
     await command(
       "/usr/bin/open",

@@ -77,6 +77,10 @@ muster run codex --kind task --prompt 'Review' --on-exit 'notify "$MUSTER_STATE"
 # What is running, and stopping it.
 muster list --format human
 muster stop <id>
+
+# Show a session in a terminal: terminal, iterm2, ghostty, or one you define
+# under [open.apps] in config.toml (see docs/launching.md).
+muster run claude --prompt 'Review this project' --open kitty
 ```
 
 **A Claude launch with no containment flag opens exactly as you would open it

@@ -7,6 +7,7 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import TOML from "@iarna/toml";
 import type { Config, RequesterProfile } from "./config.js";
 import { claudeConfigDir } from "./identity/claude.js";
+import { builtinTerminals } from "./hosts/types.js";
 import type { TerminalApp } from "./hosts/types.js";
 import { mcpName, type PreparedMcp } from "./mcp.js";
 import { claudeMcpConfig } from "./claude-policy.js";
@@ -31,7 +32,10 @@ export const runSchema = z
     kind: z.enum(["session", "task"]).default("session"),
     host: z.enum(["auto", "tmux", "pty", "macos-terminal"]).optional(),
     open: z.boolean().optional(),
-    terminal: z.enum(["auto", "terminal", "iterm2", "ghostty"]).optional(),
+    terminal: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]+$/)
+      .optional(),
     permissions: z.enum(["auto", "deny", "bypass"]).optional(),
     sandbox: z.enum(["read-only", "workspace-write", "full-access"]).optional(),
     mcp: z.array(mcpName).optional(),
@@ -669,10 +673,22 @@ export function normalizeOpenFlag(argv: string[]): string[] {
  */
 export function resolveTerminal(
   req: { terminal?: TerminalApp | "auto" },
-  config: Pick<Config, "terminal">,
+  config: Pick<Config, "terminal" | "open">,
 ): TerminalApp {
-  if (req.terminal && req.terminal !== "auto") return req.terminal;
-  return config.terminal === "auto" ? "terminal" : config.terminal;
+  const name =
+    req.terminal && req.terminal !== "auto"
+      ? req.terminal
+      : config.terminal === "auto"
+        ? "terminal"
+        : config.terminal;
+  if (
+    !(builtinTerminals as readonly string[]).includes(name) &&
+    !config.open.apps[name]
+  )
+    throw new Error(
+      `Unknown terminal "${name}": use ${builtinTerminals.join(", ")}, or define it under [open.apps.${name}] in config.toml`,
+    );
+  return name;
 }
 export function launchArgs(
   req: RunRequest,

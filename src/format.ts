@@ -144,7 +144,7 @@ function recordHuman(record: RecordView, color: boolean): string {
     lines.push(
       field(
         "Terminal",
-        `${record.terminal === "ghostty" ? "Ghostty" : record.terminal === "iterm2" ? "iTerm2" : "Terminal.app"} (opened at launch)`,
+        `${record.terminal === "ghostty" ? "Ghostty" : record.terminal === "iterm2" ? "iTerm2" : record.terminal && record.terminal !== "terminal" ? record.terminal : "Terminal.app"} (opened at launch)`,
       ),
     );
   if (record.exit_code !== undefined)
