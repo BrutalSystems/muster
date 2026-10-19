@@ -132,6 +132,29 @@ test("--plugin-dir reaches a normal claude launch and is refused by a sealed one
       ),
     ).toThrow(/sealed launch loads no plugins/);
 });
+test("a sealed launch refuses --plugin-dir in its = and respelled forms too", async () => {
+  const config = await loadConfig(
+    await mkdtemp(join(tmpdir(), "muster-policy-")),
+  );
+  const joined = ["--plugin-dir=/tmp/plugin"];
+  const normal = launchArgs(
+    runSchema.parse({ runtime: "claude", prompt: "hi", args: joined }),
+    config,
+  );
+  expect(normal).toContain("--plugin-dir=/tmp/plugin");
+  for (const args of [
+    joined,
+    ["--PLUGIN_DIR=/tmp/plugin"],
+    ["--Plugin-Dir", "/tmp/plugin"],
+  ])
+    for (const level of ["read", "work"] as const)
+      expect(() =>
+        launchArgs(
+          runSchema.parse({ runtime: "claude", prompt: "hi", level, args }),
+          config,
+        ),
+      ).toThrow(/sealed launch loads no plugins/);
+});
 test("log records survive a new reader and include requester", async () => {
   const home = await mkdtemp(join(tmpdir(), "muster-log-"));
   await new LaunchLog(home).write({

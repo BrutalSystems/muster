@@ -886,7 +886,10 @@ export function launchArgs(
   const policy = resolvePermissions(req, config);
   // A plugin folder brings its own skills, agents, hooks and MCP servers. A
   // sealed launch chose exactly what it loads, so it takes none of them.
-  if (policy.permissions !== "normal" && extra.includes("--plugin-dir"))
+  if (
+    policy.permissions !== "normal" &&
+    extra.some((arg) => normaliseFlag(arg) === "--plugin-dir")
+  )
     throw new Error(
       "Runtime option refused: --plugin-dir (a sealed launch loads no plugins)",
     );
