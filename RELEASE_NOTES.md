@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.4.0 — 2026-10-19
 
 - `muster run claude … --` now passes `--plugin-dir` through to Claude, so a launch
   can load a plugin folder for that session only. Each one, in either the
