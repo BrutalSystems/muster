@@ -114,6 +114,49 @@ test("prompt is mandatory and cannot be interpreted as a flag or shell program",
     failIfUnavailable: true,
   });
 });
+test("--plugin-dir reaches a normal claude launch and is refused by a sealed one", async () => {
+  const config = await loadConfig(
+    await mkdtemp(join(tmpdir(), "muster-policy-")),
+  );
+  const plugin = await mkdtemp(join(tmpdir(), "muster-plugin-"));
+  const args = ["--plugin-dir", plugin];
+  const normal = launchArgs(
+    runSchema.parse({ runtime: "claude", prompt: "hi", args }),
+    config,
+  );
+  expect(normal[normal.indexOf("--plugin-dir") + 1]).toBe(plugin);
+  for (const level of ["read", "work"] as const)
+    expect(() =>
+      launchArgs(
+        runSchema.parse({ runtime: "claude", prompt: "hi", level, args }),
+        config,
+      ),
+    ).toThrow(/sealed launch loads no plugins/);
+});
+test("a sealed launch refuses --plugin-dir in its = and respelled forms too", async () => {
+  const config = await loadConfig(
+    await mkdtemp(join(tmpdir(), "muster-policy-")),
+  );
+  const plugin = await mkdtemp(join(tmpdir(), "muster-plugin-"));
+  const joined = [`--plugin-dir=${plugin}`];
+  const normal = launchArgs(
+    runSchema.parse({ runtime: "claude", prompt: "hi", args: joined }),
+    config,
+  );
+  expect(normal).toContain(`--plugin-dir=${plugin}`);
+  for (const args of [
+    joined,
+    [`--PLUGIN_DIR=${plugin}`],
+    ["--Plugin-Dir", plugin],
+  ])
+    for (const level of ["read", "work"] as const)
+      expect(() =>
+        launchArgs(
+          runSchema.parse({ runtime: "claude", prompt: "hi", level, args }),
+          config,
+        ),
+      ).toThrow(/sealed launch loads no plugins/);
+});
 test("log records survive a new reader and include requester", async () => {
   const home = await mkdtemp(join(tmpdir(), "muster-log-"));
   await new LaunchLog(home).write({

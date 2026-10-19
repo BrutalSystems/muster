@@ -39,7 +39,7 @@ with no owner recorded once it is 15 seconds old.
 ## Passing options to the runtime
 
 `run` accepts an optional `--` followed by runtime arguments. The normal
-allowlist is `--model` / `-m`, plus Claude's `--effort` and `--name` and OpenCode's `--agent`
+allowlist is `--model` / `-m`, plus Claude's `--effort`, `--name` and `--plugin-dir` (not in a sealed launch) and OpenCode's `--agent`
 and `--variant`. For Claude and Codex a model named there is _consumed_ rather
 than forwarded — it reaches the child through the same path as `--model`, so it
 appears once — and naming a model both ways is refused rather than resolved by

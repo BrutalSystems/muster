@@ -126,7 +126,7 @@ export const AGENTS: Record<Runtime, AgentCapabilities> = {
     configHomeVar: "CLAUDE_CONFIG_DIR",
     enforcement: "kernel",
     runtimeOptions: {
-      forwarded: ["--effort", "--name"],
+      forwarded: ["--effort", "--name", "--plugin-dir"],
       consumed: [...MODEL_FLAGS, ...RESUME_FLAGS, FORK_FLAG],
     },
     trustWorkspace: setWorkspaceTrust,
