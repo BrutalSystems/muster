@@ -133,6 +133,10 @@ export const COMMANDS: Command[] = [
       ],
       ["--format FORMAT", "json (default) or human"],
       ["-- RUNTIME_OPTIONS", "everything after -- is passed to the runtime"],
+      [
+        "-- --plugin-dir DIR",
+        "claude only: load that plugin folder for this session; a sealed launch refuses it",
+      ],
     ],
     notes: [
       "With none of --read-only, --write-here or --unrestricted, claude opens exactly as you would open it by hand in that folder: your profile's rules, CLAUDE.md, permissions, hooks, plugins, MCP servers and env. Muster refuses only a profile whose default mode is bypass. codex and opencode stay read-only by default.",

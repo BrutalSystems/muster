@@ -2,6 +2,7 @@ import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { COMMANDS, topLevelHelp, commandHelp } from "../src/help.js";
+import { asksForHelp } from "../src/cli-options.js";
 
 const source = readFileSync(
   join(import.meta.dirname, "..", "src", "muster.ts"),
@@ -55,4 +56,15 @@ test("the top level lists every command and points at per-command help", () => {
 
 test("an unknown command has no help", () => {
   expect(commandHelp("nope")).toBeUndefined();
+});
+
+/**
+ * A caller probes `muster run claude --help` for `--plugin-dir` before passing
+ * it, so the flag must be named there, not only in docs/cli.md.
+ */
+test("run's help names --plugin-dir, and that a sealed launch refuses it", () => {
+  expect(asksForHelp(["claude", "--help"])).toBe(true);
+  const help = commandHelp("run")!;
+  expect(help).toContain("--plugin-dir");
+  expect(help).toMatch(/--plugin-dir[^\n]*\n?[^\n]*sealed/);
 });
