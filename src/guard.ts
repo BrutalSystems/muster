@@ -8,6 +8,7 @@ import {
   readFileSync,
   readSync,
   realpathSync,
+  statSync,
 } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -859,6 +860,31 @@ export function resolveTerminal(
     );
   return name;
 }
+/**
+ * Each `--plugin-dir` value names a directory, found from the launch's cwd as
+ * the child will find it. A typo, a file or an empty value is refused here,
+ * before anything is reserved or spawned, rather than left for Claude to skip.
+ */
+function assertPluginDirs(extra: string[], cwd: string): void {
+  for (let i = 0; i < extra.length; i++) {
+    const arg = extra[i]!;
+    if (normaliseFlag(arg) !== "--plugin-dir") continue;
+    const value = arg.includes("=")
+      ? arg.slice(arg.indexOf("=") + 1)
+      : (extra[++i] ?? "");
+    let dir = false;
+    try {
+      dir = value !== "" && statSync(resolve(cwd, value)).isDirectory();
+    } catch {
+      dir = false;
+    }
+    if (!dir)
+      throw new Error(
+        `Runtime option refused: --plugin-dir ${value === "" ? "needs a directory" : `${value} is not a directory`}`,
+      );
+  }
+}
+
 export function launchArgs(
   req: RunRequest,
   config: Config,
@@ -893,6 +919,7 @@ export function launchArgs(
     throw new Error(
       "Runtime option refused: --plugin-dir (a sealed launch loads no plugins)",
     );
+  assertPluginDirs(extra, req.cwd);
   if (policy.permissions === "normal") {
     // `resolvePermissions` refuses this outside claude; restated so the codex
     // branch below can never read `normal` as one of its own modes.

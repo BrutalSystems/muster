@@ -13,9 +13,13 @@ as patches, so do not read an old entry under the new rule.
 ## Unreleased
 
 - `muster run claude … --` now passes `--plugin-dir` through to Claude, so a launch
-  can load a plugin folder for that session only. A sealed launch (`--read-only`,
-  `--write-here`, `--unrestricted`) refuses it, and every other runtime option is
-  still refused.
+  can load a plugin folder for that session only. Each one, in either the
+  `--plugin-dir <dir>` or `--plugin-dir=<dir>` form, must name an existing
+  directory (a relative one is found from the launch's `--cwd`), or the launch is
+  refused before anything starts. A sealed launch (`--read-only`, `--write-here`,
+  `--unrestricted`, or `--permissions`/`--sandbox`) refuses it. Options outside the
+  existing allowlist (`--effort`, `--name`, and now `--plugin-dir`) are still
+  refused.
 
 ## 3.3.4 — 2026-10-18
 

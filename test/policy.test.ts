@@ -118,12 +118,13 @@ test("--plugin-dir reaches a normal claude launch and is refused by a sealed one
   const config = await loadConfig(
     await mkdtemp(join(tmpdir(), "muster-policy-")),
   );
-  const args = ["--plugin-dir", "/tmp/plugin"];
+  const plugin = await mkdtemp(join(tmpdir(), "muster-plugin-"));
+  const args = ["--plugin-dir", plugin];
   const normal = launchArgs(
     runSchema.parse({ runtime: "claude", prompt: "hi", args }),
     config,
   );
-  expect(normal[normal.indexOf("--plugin-dir") + 1]).toBe("/tmp/plugin");
+  expect(normal[normal.indexOf("--plugin-dir") + 1]).toBe(plugin);
   for (const level of ["read", "work"] as const)
     expect(() =>
       launchArgs(
@@ -136,16 +137,17 @@ test("a sealed launch refuses --plugin-dir in its = and respelled forms too", as
   const config = await loadConfig(
     await mkdtemp(join(tmpdir(), "muster-policy-")),
   );
-  const joined = ["--plugin-dir=/tmp/plugin"];
+  const plugin = await mkdtemp(join(tmpdir(), "muster-plugin-"));
+  const joined = [`--plugin-dir=${plugin}`];
   const normal = launchArgs(
     runSchema.parse({ runtime: "claude", prompt: "hi", args: joined }),
     config,
   );
-  expect(normal).toContain("--plugin-dir=/tmp/plugin");
+  expect(normal).toContain(`--plugin-dir=${plugin}`);
   for (const args of [
     joined,
-    ["--PLUGIN_DIR=/tmp/plugin"],
-    ["--Plugin-Dir", "/tmp/plugin"],
+    [`--PLUGIN_DIR=${plugin}`],
+    ["--Plugin-Dir", plugin],
   ])
     for (const level of ["read", "work"] as const)
       expect(() =>
