@@ -1,5 +1,5 @@
 import { test, expect } from "vitest";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fixture } from "./helpers.js";
 import { Muster } from "../src/run.js";
@@ -128,6 +128,40 @@ test("a relative plugin dir is found from the launch's cwd", async () => {
     ).rejects.toThrow(/recorded, not launched/);
     const argv = host.launched[0]!.argv;
     expect(argv[argv.indexOf("--plugin-dir") + 1]).toBe("rel-plugin");
+  } finally {
+    await m.close();
+  }
+}, 20000);
+
+test("a plugin dir is checked as the child will open it, `..` and all", async () => {
+  const { f, m, host } = await muster();
+  try {
+    await mkdir(join(f.root, "plugin2"));
+    await writeFile(join(f.root, "plain.txt"), "");
+    await mkdir(join(f.root, "real", "inner"), { recursive: true });
+    await symlink(join(f.root, "real", "inner"), join(f.root, "link"));
+    // each names root/plugin2 lexically, but the system walks the real path:
+    // through a file (ENOTDIR), a missing dir (ENOENT), or the link's real parent
+    const bad = [
+      "plain.txt/../plugin2",
+      `${f.root}/plain.txt/../plugin2`,
+      "missing/../plugin2",
+      `${f.root}/missing/../plugin2`,
+      "link/../plugin2",
+      `${f.root}/link/../plugin2`,
+    ];
+    for (const value of bad)
+      for (const args of [["--plugin-dir", value], [`--plugin-dir=${value}`]])
+        await expect(
+          m.run({
+            runtime: "claude",
+            prompt: "hi",
+            cwd: f.root,
+            host: "pty",
+            args,
+          }),
+        ).rejects.toThrow(/Runtime option refused: --plugin-dir/);
+    expect(host.launched).toEqual([]);
   } finally {
     await m.close();
   }

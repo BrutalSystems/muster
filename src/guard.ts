@@ -862,7 +862,7 @@ export function resolveTerminal(
 }
 /**
  * Each `--plugin-dir` value names a directory, found from the launch's cwd as
- * the child will find it. A typo, a file or an empty value is refused here,
+ * the child will find it: the path as given, `..` walked by the system. A typo, a file or an empty value is refused here,
  * before anything is reserved or spawned, rather than left for Claude to skip.
  */
 function assertPluginDirs(extra: string[], cwd: string): void {
@@ -874,7 +874,10 @@ function assertPluginDirs(extra: string[], cwd: string): void {
       : (extra[++i] ?? "");
     let dir = false;
     try {
-      dir = value !== "" && statSync(resolve(cwd, value)).isDirectory();
+      // Joined, never normalised: `resolve` would drop `a/..` lexically, where the
+      // system walks it, through a file, a missing dir or a link's real parent.
+      const path = isAbsolute(value) ? value : `${cwd}/${value}`;
+      dir = value !== "" && statSync(path).isDirectory();
     } catch {
       dir = false;
     }
