@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { launchAnnotations } from "./annotations.js";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { AGENTS } from "./agents.js";
@@ -10,7 +12,8 @@ import type { Runtime } from "./types.js";
  *
  * A pass-through reaches the runtime verbatim and is refused unless the agent's
  * row allow-lists it. An option is a muster concept that each agent expresses
- * in its own way, or cannot express at all — so the set is closed, and naming
+ * in its own way, or cannot express at all. Structured metadata/provenance
+ * options are recorded by Muster on every runtime. The set is closed, and naming
  * one an agent has no answer for is an error rather than a silent no-op.
  */
 export const LAUNCH_OPTIONS = [
@@ -18,6 +21,25 @@ export const LAUNCH_OPTIONS = [
   "accept-bypass-warning",
 ] as const;
 export type LaunchOption = (typeof LAUNCH_OPTIONS)[number];
+export const launchOptionsSchema = z
+  .array(z.string())
+  .superRefine((options, ctx) => {
+    try {
+      for (const option of options)
+        if (
+          !(LAUNCH_OPTIONS as readonly string[]).includes(option) &&
+          !option.startsWith("metadata=") &&
+          !option.startsWith("provenance=")
+        )
+          throw new Error("Unknown launch option");
+      launchAnnotations(options);
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: (error as Error).message,
+      });
+    }
+  });
 
 /**
  * Refuses an option the runtime cannot honour, before anything is reserved or
@@ -32,7 +54,7 @@ export type LaunchOption = (typeof LAUNCH_OPTIONS)[number];
  */
 export function assertOptionsSupported(
   runtime: Runtime,
-  options: readonly LaunchOption[],
+  options: readonly string[],
   permissions: LaunchPermissions,
 ): void {
   for (const option of options) {

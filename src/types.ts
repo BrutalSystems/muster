@@ -1,9 +1,11 @@
+import type { LaunchAnnotations } from "./annotations.js";
 import type { HostCapabilities, HostId, TerminalApp } from "./hosts/types.js";
 import type { Enforcement } from "./enforcement.js";
 import type { LaunchPermissions } from "./guard.js";
 import type { McpSummary } from "./mcp.js";
 export type Runtime = "codex" | "claude" | "opencode";
 export type SessionPeer = LaunchPermissions &
+  LaunchAnnotations &
   McpSummary & {
     kind: "session";
     /**
@@ -52,6 +54,7 @@ export type SessionPeer = LaunchPermissions &
       }
   );
 export type TaskHandle = LaunchPermissions &
+  LaunchAnnotations &
   McpSummary & {
     kind: "task";
     enforcement?: Enforcement;

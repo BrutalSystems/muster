@@ -1,5 +1,6 @@
+import type { LaunchAnnotations } from "./annotations.js";
 // Human formatting is CLI-only; runtime records and MCP responses stay unchanged.
-type RecordView = {
+type RecordView = LaunchAnnotations & {
   mcp?: string[];
   mcp_warnings?: string[];
   permissions?: string;
@@ -93,6 +94,15 @@ function recordHuman(record: RecordView, color: boolean): string {
   if (record.runtime === "opencode" && record.server_url)
     lines.push(field("Control URL", clean(record.server_url)));
   if (record.title) lines.push(field("Title", clean(record.title)));
+  if (record.metadata !== undefined)
+    lines.push(field("Metadata", clean(JSON.stringify(record.metadata))));
+  if (record.provenance !== undefined)
+    lines.push(
+      field(
+        "Provenance (caller supplied)",
+        clean(JSON.stringify(record.provenance)),
+      ),
+    );
   lines.push(field("Directory", clean(record.cwd)));
   if (record.identity) lines.push(field("Identity", clean(record.identity)));
   // A normal launch has no permissions or sandbox of muster's to report; one

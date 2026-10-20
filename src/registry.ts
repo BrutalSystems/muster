@@ -1,3 +1,4 @@
+import type { LaunchAnnotations } from "./annotations.js";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -14,7 +15,7 @@ import type { RunRequest, LaunchPermissions } from "./guard.js";
 import type { Runtime } from "./types.js";
 import { LOCAL, requesterKey, type RequesterId } from "./requester.js";
 import type { Enforcement } from "./enforcement.js";
-export type Entry = Partial<LaunchPermissions> & {
+export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   id: string;
   launchId: string;
   requestKey?: string;
@@ -352,6 +353,8 @@ export class Registry {
       Partial<LaunchPermissions> &
       Pick<
         Entry,
+        | "metadata"
+        | "provenance"
         | "enforcement"
         | "model"
         | "modelSource"
@@ -485,8 +488,9 @@ export class Registry {
       const entry =
         byLaunch ?? currentEntry(entries.filter((e) => e.id === id));
       if (!entry) throw new Error(`Unknown launch ${id}`);
-      if ("requester" in patch)
-        throw new Error("requester is recorded once and cannot be updated");
+      for (const key of ["requester", "metadata", "provenance"] as const)
+        if (key in patch)
+          throw new Error(`${key} is recorded once and cannot be updated`);
       if (
         patch.id &&
         entries.some(

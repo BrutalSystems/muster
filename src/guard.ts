@@ -22,7 +22,8 @@ import { mcpName, type PreparedMcp } from "./mcp.js";
 import { claudeMcpConfig } from "./claude-policy.js";
 import { pluginName } from "./plugins.js";
 import { AGENTS, FORK_FLAG, MODEL_FLAGS, RESUME_FLAGS } from "./agents.js";
-import { LAUNCH_OPTIONS } from "./options.js";
+import { launchOptionsSchema } from "./options.js";
+import { launchAnnotations } from "./annotations.js";
 import type { RequesterId } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
 import { parseDuration } from "./duration.js";
@@ -70,10 +71,10 @@ export const runSchema = z
     requestKey: z.string().min(1).max(200).optional(),
     level: z.enum(["read", "work", "normal", "open"]).optional(),
     /**
-     * Named things muster does on the caller's behalf. Closed set, unlike the
+     * Named behaviors and structured launch annotations. Closed set, unlike the
      * pass-through after `--`: see src/options.ts.
      */
-    options: z.array(z.enum(LAUNCH_OPTIONS)).default([]),
+    options: launchOptionsSchema.default([]),
     args: z.array(z.string()).default([]),
   })
   .strict();
@@ -323,6 +324,7 @@ export function paramsFingerprint(
   mcp: string[],
   plugins: string[],
 ): string {
+  const annotations = launchAnnotations(req.options);
   return createHash("sha256")
     .update(
       JSON.stringify([
@@ -347,6 +349,9 @@ export function paramsFingerprint(
         req.idleTimeout ?? null,
         req.ttl ?? null,
         req.args,
+        // Do not append anything for old-style requests: their persisted
+        // fingerprints must remain usable after upgrading.
+        ...(Object.keys(annotations).length ? [annotations] : []),
       ]),
     )
     .digest("hex");

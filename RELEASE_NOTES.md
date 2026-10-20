@@ -10,6 +10,15 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `run --options` accepts `metadata=JSON` and `provenance=JSON` for caller-supplied
+  launch facts and parent/session references. They are stored at reservation,
+  cannot be updated through Muster, and survive in `run`, `list` and `wait`
+  output after a session or task ends. Conflicting request-key retries, duplicate
+  JSON keys and malformed inputs are refused. Existing calls remain unchanged;
+  these informational fields grant no authority and must not contain secrets.
+
 ## 3.4.0 — 2026-10-19
 
 - `muster run claude … --` now passes `--plugin-dir` through to Claude, so a launch

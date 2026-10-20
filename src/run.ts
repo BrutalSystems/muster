@@ -1,3 +1,4 @@
+import { launchAnnotations, annotationView } from "./annotations.js";
 import {
   stat,
   readFile,
@@ -118,9 +119,19 @@ import { pollInterval, reapLog } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
 import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
 import type { OnExitResult } from "./registry.js";
+/** Runtime/peer refresh data cannot supply or replace reservation facts. */
+function sessionPeerView(entry: Entry): Record<string, unknown> {
+  const {
+    metadata: _metadata,
+    provenance: _provenance,
+    ...peer
+  } = entry.peer ?? {};
+  return { ...peer, ...annotationView(entry) };
+}
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
+    ...annotationView(entry),
     permissions: entry.permissions!,
     sandbox: entry.sandbox!,
     mcp: entry.mcp ?? [],
@@ -668,6 +679,7 @@ export class Muster {
         runtime: req.runtime,
         kind: req.kind,
         cwd: req.cwd,
+        ...launchAnnotations(req.options),
         ...permissions,
         enforcement,
         model: model?.model ?? null,
@@ -1272,6 +1284,7 @@ export class Muster {
           );
           const peer = {
             kind: "session",
+            ...annotationView(entry),
             ...permissions,
             enforcement,
             ...prepared.summary,
@@ -1563,7 +1576,7 @@ export class Muster {
     }
     if (!entry.peer)
       throw new Error(`Request key ${key} has no recorded session`);
-    return entry.peer as unknown as SessionPeer;
+    return sessionPeerView(entry) as SessionPeer;
   }
   private async startTask(
     entry: Entry,
@@ -1906,7 +1919,7 @@ export class Muster {
       await rm(e.identityPath, { recursive: true, force: true });
     if (e.kind === "session")
       return {
-        ...e.peer,
+        ...sessionPeerView(e),
         kind: "session",
         ...(e.permissions
           ? { permissions: e.permissions, sandbox: e.sandbox }
@@ -1934,6 +1947,7 @@ export class Muster {
       const exit = await readExit(e.exitPath);
       return {
         kind: "task",
+        ...annotationView(e),
         ...(e.mcp ? { mcp: e.mcp } : {}),
         ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
         ...(e.permissions

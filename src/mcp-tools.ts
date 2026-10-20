@@ -71,10 +71,13 @@ export const MCP_TOOLS = [
           type: "array",
           items: {
             type: "string",
-            enum: ["auto-approve-path", "accept-bypass-warning"],
+            anyOf: [
+              { enum: ["auto-approve-path", "accept-bypass-warning"] },
+              { pattern: "^(metadata|provenance)=" },
+            ],
           },
           description:
-            "Muster-side launch options. auto-approve-path records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch; refused for a runtime with no trust gate, and refused if the directory ships hooks or MCP servers. accept-bypass-warning accepts Claude's one-time Bypass Permissions warning for a bypass launch (level open); refused for other runtimes and without bypass permissions. Not expressible remotely.",
+            "Muster-side launch options. auto-approve-path records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch; refused for a runtime with no trust gate, and refused if the directory ships hooks or MCP servers. accept-bypass-warning accepts Claude's one-time Bypass Permissions warning for a bypass launch (level open); refused for other runtimes and without bypass permissions. metadata=<JSON> adds up to 32 string facts (keys 1-64 UTF-8 bytes, values at most 1024 bytes, canonical JSON at most 16 KiB). provenance=<JSON> requires namespace, session, launcher, parent; IDs use [A-Za-z0-9._:-]{1,128}, parent is an ID in that namespace or explicit null for a caller-declared root. Each structured option occurs once; duplicate JSON keys are refused. Values are informational, immutable, and returned by run/list/wait; never put secrets here. Not expressible remotely.",
         },
         project: {
           type: "string",

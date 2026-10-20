@@ -91,3 +91,67 @@ muster run opencode --prompt 'Build a plan' -- --model local-provider/qwen3-30b
 muster run opencode --kind task --prompt 'Summarize the tests'
 muster run opencode --mcp tincan --permissions auto --sandbox workspace-write --prompt 'Coordinate'
 ```
+
+## Launch metadata and provenance
+
+The repeatable `--options` flag also accepts `metadata=JSON` and
+`provenance=JSON`. Existing named options keep their behavior. These are
+**caller-supplied facts**, not secrets or grants of authority:
+
+```sh
+muster run codex --prompt 'Review this project' --read-only \
+  --options 'metadata={"workflow.role":"reviewer","workflow.versions":"rules@4"}' \
+  --options 'provenance={"namespace":"workflow","session":"run-002","launcher":"controller","parent":"run-001"}' \
+  --title reviewer
+```
+
+`metadata` is a flat string-to-string object: at most 32 entries, nonempty
+keys of at most 64 UTF-8 bytes, values of at most 1024 UTF-8 bytes, and at most
+16 KiB when serialized as compact JSON with sorted keys. Values may be empty.
+Muster assigns no meaning to the keys. Use a namespace of your choosing.
+
+`provenance` has exactly four fields:
+
+| Field | Meaning |
+| --- | --- |
+| `namespace` | The caller's identifier namespace |
+| `session` | The new session's ID in that namespace |
+| `launcher` | The caller's name for the application performing the launch |
+| `parent` | The requesting session's ID in the same namespace, or explicit `null` for an operator root |
+
+Every identifier uses 1–128 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`,
+`:`, and `-`. A missing or empty parent is refused. A `null` parent is a
+caller-declared root, not proof of operator authorization. Omitting the entire
+provenance option means it was not supplied. The caller maintains the mapping
+between its session IDs and Muster's IDs; Muster does not require parents to
+exist, enforce uniqueness, or build a launch tree.
+
+Both objects are stored when the launch is reserved. They appear in `run`,
+`list`, and `wait` output for sessions and tasks, including failed or ended
+records. The programmatic `wait` result contains them in `record`; the CLI
+prints that record directly, as before. Human output shows both objects. Use
+`--title` separately to display a role in a tmux terminal; changing the title
+does not change the stored facts.
+
+These fields cannot be updated through Muster. Supported sealed launches
+protect the registry using the existing filesystem containment; this does not
+protect it from an unrestricted process running as the same OS user. The
+registry's existing `requester` records who supplied the facts under Muster's
+caller model, and `owner` identifies the Muster process. Neither is replaced
+by the caller's `launcher` or `parent` claim. Authorization must come from the
+calling application's own trusted records.
+
+Each structured option may occur only once. Malformed JSON, duplicate object
+keys (including escaped spellings), wrong value types, unknown provenance
+fields, and exceeded limits fail before reservation. Each raw JSON payload
+also has a 128 KiB input limit, including whitespace. Reusing a request key
+with different annotations is refused; object key order, option order and JSON
+whitespace do not change the request. An absent metadata object and an explicit
+empty object are distinct. Existing requests without annotations preserve their
+retry behavior and output shape.
+
+MCP callers put the same strings in the existing `options` array. As before,
+remote requesters cannot supply `options`; the local CLI and launch-enabled
+local MCP server can. These options never forward data into runtime arguments
+or prompts. They are visible in records, output and launch logs: do not put
+credentials, tokens or other secrets in them.
