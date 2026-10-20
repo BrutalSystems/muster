@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { once } from "node:events";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ process.on("SIGTERM", () => {
   const child = spawn("sleep", ["30"], { stdio: "ignore" });
   writeFileSync(process.argv[2], String(child.pid));
 });
+process.send("ready");
 setInterval(() => {}, 1000);
 `;
 
@@ -48,8 +50,11 @@ test("kills a process the tree forked during the SIGTERM wait", async () => {
   await writeFile(script, FORKS_ON_TERM);
 
   const parent = spawn(process.execPath, [script, pidFile], {
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
   });
+  // A PID can exist before Node installs the handler. Signalling earlier
+  // tests startup timing, not a child forked during the SIGTERM grace period.
+  await once(parent, "message");
   const ref = await processRef(parent.pid!);
   expect(ref).toBeDefined();
 
