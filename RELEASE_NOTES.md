@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.12.0 — 2026-10-21
 
 - The Claude Code plugin now brings Muster's MCP server. Its `.mcp.json` runs
   `npx -y @brutalsystems/muster@<version> mcp`, pinned to the plugin's own
