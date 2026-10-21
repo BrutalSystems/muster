@@ -17,6 +17,7 @@ import type { Runtime } from "./types.js";
  * one an agent has no answer for is an error rather than a silent no-op.
  */
 export const LAUNCH_OPTIONS = [
+  "report-launch",
   "inherit-profile",
   "restrict-mcp",
   "auto-approve-path",

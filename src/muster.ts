@@ -381,14 +381,20 @@ async function main() {
       const args = positionals.slice(1);
       let record;
       try {
-        record = await muster.run({
-          runtime,
-          ...values,
-          ...(requestKey === undefined ? {} : { requestKey }),
-          ...(idleTimeout === undefined ? {} : { idleTimeout }),
-          ...(forkSession === undefined ? {} : { forkSession }),
-          args,
-        });
+        record = await muster.run(
+          {
+            runtime,
+            ...values,
+            ...(requestKey === undefined ? {} : { requestKey }),
+            ...(idleTimeout === undefined ? {} : { idleTimeout }),
+            ...(forkSession === undefined ? {} : { forkSession }),
+            args,
+          },
+          undefined,
+          (event) => {
+            process.stderr.write(JSON.stringify(event) + "\n");
+          },
+        );
       } catch (e) {
         // A launch that failed still ended, and the caller is waiting on its
         // command to say so: armed on the failed entry, the watcher finds it
