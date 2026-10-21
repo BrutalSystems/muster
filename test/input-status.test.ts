@@ -131,3 +131,53 @@ test("a returned input prompt supersedes old dialog text still visible above it"
     ),
   ).toMatchObject({ state: "unknown" });
 });
+
+const heldMessage =
+  "Held message from another session\n\nTest sender: harmless test message\n\n❯ 1. Deny — drop it and tell the sender it was declined\n  2. Deliver this message to Claude\nEnter to confirm · Esc to cancel";
+for (const screen of [
+  heldMessage,
+  heldMessage.replace(
+    "Test sender: harmless test message",
+    Array(20).fill("│ harmless body").join("\n"),
+  ),
+  heldMessage
+    .replace(
+      "Held message from another session",
+      "Held message from another\nsession",
+    )
+    .replace(
+      "Deliver this message to Claude",
+      "Deliver this message to\nClaude",
+    ),
+  `\x1b[33m${heldMessage}\x1b[0m`,
+])
+  test("Claude held-message menu is positive waiting evidence", () => {
+    expect(classifyScreen("claude", screen)).toMatchObject({
+      state: "waiting",
+      reason: "held-message",
+      source: "tmux-screen",
+    });
+  });
+
+test("held-message words without an active menu, old output and other runtimes stay unknown", () => {
+  for (const screen of [
+    "Held message from another session",
+    "The dialog says Held message from another session, with Deny / Deliver.",
+    heldMessage.replace("❯ 1.", "1."),
+    heldMessage + "\n❯ ",
+    heldMessage + "\n" + Array(20).fill("ordinary output").join("\n"),
+  ])
+    expect(classifyScreen("claude", screen).state).toBe("unknown");
+  expect(classifyScreen("codex", heldMessage).state).toBe("unknown");
+});
+
+test("post-menu output and a nonempty input prompt supersede held-message choices", () => {
+  for (const suffix of [
+    "\nDelivered\n❯ next input",
+    "\nMessage denied",
+    "\nWorking (esc to interrupt)",
+  ])
+    expect(classifyScreen("claude", heldMessage + suffix).state).toBe(
+      "unknown",
+    );
+});

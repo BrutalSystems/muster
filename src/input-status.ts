@@ -6,6 +6,7 @@ export type InputStatus = {
     | "bypass-warning"
     | "permission"
     | "mcp-approval"
+    | "held-message"
     | "plan-approval"
     | "password"
     | "host-key"
@@ -46,6 +47,31 @@ export function classifyScreen(runtime: Runtime, text: string): InputStatus {
       screen,
     );
   let reason: InputStatus["reason"] | undefined;
+  // Held-message bodies can push the heading above the usual 16-line tail.
+  // Read only the already-bounded visible pane for the heading, and require
+  // both choices plus a selected menu row near the bottom, never prose alone.
+  if (
+    runtime === "claude" &&
+    /^\s*Held message from another\s+session\s*$/m.test(tail.join("\n")) &&
+    /^\s*[❯›>]?(?:\s*\d+[.)])?\s*Deny\s*[—–-]\s*drop it and tell the sender it was declined\s*$/m.test(
+      screen,
+    ) &&
+    /^\s*[❯›>]?(?:\s*\d+[.)])?\s*Deliver this message to\s+Claude\s*$/m.test(
+      screen,
+    ) &&
+    /^\s*[❯›>]\s*(?:\d+[.)]\s*)?(?:Deny\s*[—–-]|Deliver this message to)/m.test(
+      screen,
+    ) &&
+    /(?:^|\n)\s*[❯›>]?(?:\s*\d+[.)])?\s*Deliver this message to\s+Claude[ \t]*(?:\n[ \t]*Enter to confirm[ \t]*[·•][ \t]*Esc to cancel)?\s*$/.test(
+      screen,
+    )
+  )
+    return {
+      state: "waiting",
+      reason: "held-message",
+      source: "tmux-screen",
+      observed_at: new Date().toISOString(),
+    };
   if (
     /^(?:\[sudo\]\s*)?(?:password(?: for [^:\n]{1,128})?|passphrase(?: for [^:\n]{1,128})?|Enter passphrase[^:\n]{0,160}):\s*$/i.test(
       last,
