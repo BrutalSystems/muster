@@ -65,7 +65,7 @@ export const MCP_TOOLS = [
           type: "array",
           items: { type: "string", pattern: "^[a-zA-Z0-9_-]+$" },
           description:
-            "Configured MCP server names. Omit for session defaults; normal/inherit-profile launches and tasks have no Muster defaults. [] selects no Muster servers; profile servers remain in normal/inherit-profile mode.",
+            "Configured MCP server names. Omit for session defaults; normal/inherit-profile launches and tasks have no Muster defaults. [] selects no Muster servers; profile servers remain in normal/inherit-profile mode unless restrict-mcp is set. restrict-mcp requires an explicit array, including [] for none.",
         },
         options: {
           type: "array",
@@ -77,13 +77,14 @@ export const MCP_TOOLS = [
                   "auto-approve-path",
                   "accept-bypass-warning",
                   "inherit-profile",
+                  "restrict-mcp",
                 ],
               },
               { pattern: "^(metadata|provenance)=" },
             ],
           },
           description:
-            "Muster-side launch options. inherit-profile preserves Claude/Codex profile configuration with explicit bypass/full-access permissions (level open), gated by allow_dangerous_flags. auto-approve-path records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch; refused for a runtime with no trust gate, and refused if the directory ships hooks or MCP servers. accept-bypass-warning accepts Claude's one-time Bypass Permissions warning for a bypass launch (level open); refused for other runtimes and without bypass permissions. metadata=<JSON> adds up to 32 string facts (keys 1-64 UTF-8 bytes, values at most 1024 bytes, canonical JSON at most 16 KiB). provenance=<JSON> requires namespace, session, launcher, parent; IDs use [A-Za-z0-9._:-]{1,128}, parent is an ID in that namespace or explicit null for a caller-declared root. Each structured option occurs once; duplicate JSON keys are refused. Values are informational, immutable, and returned by run/list/wait; never put secrets here. Not expressible remotely.",
+            "Muster-side launch options. restrict-mcp requires Claude inherit-profile: only explicitly selected Muster MCP servers load; all account connectors are disabled. Requires Claude Code 2.1.305 or later. inherit-profile preserves Claude/Codex profile configuration with explicit bypass/full-access permissions (level open), gated by allow_dangerous_flags. auto-approve-path records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch; refused for a runtime with no trust gate, and refused if the directory ships hooks or MCP servers. accept-bypass-warning accepts Claude's one-time Bypass Permissions warning for a bypass launch (level open); refused for other runtimes and without bypass permissions. metadata=<JSON> adds up to 32 string facts (keys 1-64 UTF-8 bytes, values at most 1024 bytes, canonical JSON at most 16 KiB). provenance=<JSON> requires namespace, session, launcher, parent; IDs use [A-Za-z0-9._:-]{1,128}, parent is an ID in that namespace or explicit null for a caller-declared root. Each structured option occurs once; duplicate JSON keys are refused. Values are informational, immutable, and returned by run/list/wait; never put secrets here. Not expressible remotely.",
         },
         project: {
           type: "string",

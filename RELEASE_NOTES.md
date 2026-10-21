@@ -10,6 +10,16 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Claude inherited-profile launches can opt into `--options restrict-mcp` with
+  an explicit `--mcp` selection or `--no-mcp`. Profile rules, plugins and hooks
+  remain available while unselected MCP servers and all account connectors are
+  disabled for that launch. Requires Claude Code 2.1.305 or later; detected
+  managed policy is refused, including policy in a custom configuration home.
+  The immutable `mcp_selection` is returned by run/list/wait and participates
+  in request-key conflicts. Existing additive MCP behavior is unchanged.
+
 ## 3.6.0 — 2026-10-21
 
 - Claude and Codex can opt into profile-preserving full access with

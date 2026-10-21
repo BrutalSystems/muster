@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { claudeConfigDir } from "./identity/claude.js";
 import type { PreparedMcp } from "./mcp.js";
 
 export function claudeMcpConfig(
@@ -53,6 +54,7 @@ export async function assertClaudePolicy(
     join(system, "managed-settings.json"),
     join(system, "managed-mcp.json"),
     join(home, ".claude", "remote-settings.json"),
+    join(claudeConfigDir(env), "remote-settings.json"),
   ];
   try {
     for (const file of await readdir(join(system, "managed-settings.d")))

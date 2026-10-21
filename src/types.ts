@@ -1,3 +1,4 @@
+import type { McpSelection } from "./mcp-selection.js";
 import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 import type { HostCapabilities, HostId, TerminalApp } from "./hosts/types.js";
@@ -10,6 +11,7 @@ export type SessionPeer = LaunchPermissions &
   McpSummary & {
     kind: "session";
     inherit_profile?: boolean;
+    mcp_selection?: McpSelection;
     input_status?: InputStatus;
     /**
      * How strongly the containment was actually imposed. Optional because
@@ -61,6 +63,7 @@ export type TaskHandle = LaunchPermissions &
   McpSummary & {
     kind: "task";
     inherit_profile?: boolean;
+    mcp_selection?: McpSelection;
     input_status?: InputStatus;
     enforcement?: Enforcement;
     /**

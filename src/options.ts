@@ -18,6 +18,7 @@ import type { Runtime } from "./types.js";
  */
 export const LAUNCH_OPTIONS = [
   "inherit-profile",
+  "restrict-mcp",
   "auto-approve-path",
   "accept-bypass-warning",
 ] as const;
@@ -59,6 +60,13 @@ export function assertOptionsSupported(
   permissions: LaunchPermissions,
 ): void {
   for (const option of options) {
+    if (
+      option === "restrict-mcp" &&
+      (runtime !== "claude" || !options.includes("inherit-profile"))
+    )
+      throw new Error(
+        "--options restrict-mcp requires Claude with --options inherit-profile",
+      );
     if (
       option === "inherit-profile" &&
       (runtime === "opencode" ||
