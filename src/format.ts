@@ -11,6 +11,8 @@ type RecordView = LaunchAnnotations & {
     first_observed_at: string;
   }[];
   tracking_error?: string;
+  name?: string;
+  provisional?: boolean;
   guards?: GuardSummary;
   stop_guard_status?:
     StopGuardStatus | { state: "unknown"; continuation: "none" };
@@ -131,6 +133,8 @@ function recordHuman(record: RecordView, color: boolean): string {
     );
   if (record.runtime === "opencode" && record.server_url)
     lines.push(field("Control URL", clean(record.server_url)));
+  if (record.provisional)
+    lines.push(field("Name", `${clean(record.name)} (provisional)`));
   if (record.title) lines.push(field("Title", clean(record.title)));
   if (record.metadata !== undefined)
     lines.push(field("Metadata", clean(JSON.stringify(record.metadata))));

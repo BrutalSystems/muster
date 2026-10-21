@@ -10,6 +10,13 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Starting launches show a provisional display name, title and cwd alongside
+  their existing metadata and provenance. `--options report-launch` optionally
+  emits a reservation event on stderr before preparation/spawn, without changing
+  final stdout, readiness waits or request-key matching.
+
 ## 3.10.0 — 2026-10-21
 
 - Claude guard bundles can attach `Stop` hooks: one shared continuation per launch, session and prompt, with content-free pass/unresolved/failure and budget observations in run/list/wait. Requires Claude Code 2.1.306 or later. Stop hooks are best-effort reminders, not completion barriers; existing profile hooks remain active.

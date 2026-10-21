@@ -28,6 +28,8 @@ export type StopGuardStatus = {
 export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   /** Explicit profile-loading opt-in; absent on legacy records. */
   guards?: GuardSummary;
+  /** Reservation display only; never a runtime name or address. */
+  startingDisplay?: { name: string; title: string };
   stop_guard_status?: StopGuardStatus;
   inherit_profile?: boolean;
   mcp_selection?: McpSelection;
@@ -389,6 +391,7 @@ export class Registry {
       Partial<LaunchPermissions> &
       Pick<
         Entry,
+        | "startingDisplay"
         | "guards"
         | "inherit_profile"
         | "mcp_selection"
@@ -603,6 +606,7 @@ export class Registry {
         "metadata",
         "provenance",
         "guards",
+        "startingDisplay",
         "inherit_profile",
         "mcp_selection",
       ] as const)

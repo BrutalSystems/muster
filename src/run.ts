@@ -135,6 +135,29 @@ import { pollInterval, reapLog } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
 import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
 import type { OnExitResult } from "./registry.js";
+export type LaunchReservationEvent = {
+  event: "launch-reserved";
+  launch_id: string;
+  state: Entry["status"];
+  reused: boolean;
+  runtime: Runtime;
+  kind: "session" | "task";
+  cwd: string;
+  name?: string;
+  title?: string;
+  provisional?: true;
+};
+/** Only starting rows use this fallback; a runtime identity is never fabricated. */
+function startingView(entry: Entry) {
+  if (entry.status !== "starting") return {};
+  const fallback = provisionalTitle(entry);
+  return {
+    name: entry.startingDisplay?.name ?? fallback,
+    title: entry.startingDisplay?.title ?? fallback,
+    cwd: entry.cwd,
+    provisional: true as const,
+  };
+}
 /** Reservation-owned facts, including absence on legacy records. */
 function launchFacts(entry: Entry) {
   return {
@@ -404,9 +427,13 @@ export class Muster {
       { ...(opts.env ?? process.env) },
     );
   }
-  run(input: unknown, requester: RequesterId = LOCAL): Promise<RunResult> {
+  run(
+    input: unknown,
+    requester: RequesterId = LOCAL,
+    report?: (event: LaunchReservationEvent) => void,
+  ): Promise<RunResult> {
     if (this.closing) return Promise.reject(new Error("Muster is closing"));
-    const operation = this.launch(input, requester);
+    const operation = this.launch(input, requester, report);
     this.active.add(operation);
     return operation.finally(() => this.active.delete(operation));
   }
@@ -718,6 +745,8 @@ export class Muster {
     selectedPlugins: ReturnType<typeof selectPlugins>;
     identityName?: string;
     guards?: GuardSnapshot;
+    title?: string;
+    report?: (event: LaunchReservationEvent) => void;
   }): Promise<{ outcome: RunResult } | { entry: Entry }> {
     const {
       req,
@@ -737,6 +766,10 @@ export class Muster {
         runtime: req.runtime,
         kind: req.kind,
         cwd: req.cwd,
+        startingDisplay: {
+          name: c.title ?? provisionalTitle(req),
+          title: c.title ?? provisionalTitle(req),
+        },
         ...launchAnnotations(req.options),
         ...(c.guards ? { guards: c.guards.summary } : {}),
         inherit_profile: req.options.includes("inherit-profile"),
@@ -774,6 +807,32 @@ export class Muster {
         : undefined,
       requester,
     );
+    if (req.options.includes("report-launch")) {
+      try {
+        c.report!({
+          event: "launch-reserved",
+          launch_id: reservation.launchId,
+          state: reservation.status,
+          reused: deduped,
+          runtime: reservation.runtime,
+          kind: reservation.kind,
+          cwd: reservation.cwd,
+          ...startingView(reservation),
+        });
+      } catch {
+        // A failed observer must not strand a new reservation or mutate a reused run.
+        if (!deduped)
+          await this.registry.update(reservation.launchId, {
+            status: "failed",
+            error: "Launch reporter failed before spawn",
+          });
+        const error = new Error("Launch reporter failed");
+        if (!deduped)
+          (error as Error & { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH] =
+            reservation.launchId;
+        throw error;
+      }
+    }
     if (deduped) {
       await this.log.write(
         {
@@ -1465,8 +1524,13 @@ export class Muster {
   private async launch(
     input: unknown,
     requester: RequesterId,
+    report?: (event: LaunchReservationEvent) => void,
   ): Promise<RunResult> {
     const { req, policy, level } = await this.authorize(input, requester);
+    if (req.options.includes("report-launch") && !report)
+      throw new Error(
+        "report-launch requires a CLI or JavaScript reservation reporter; unsupported through MCP",
+      );
     const { identityName, identityMeta, credential } =
       await this.resolveIdentity(req, policy);
     const {
@@ -1521,6 +1585,8 @@ export class Muster {
     let argv = plannedArgv;
     let codexPolicy: string[] = [];
     const reserved = await this.reserveLaunch({
+      report,
+      title,
       guards,
       req,
       effective,
@@ -2156,6 +2222,7 @@ export class Muster {
         host: e.host,
         ...(e.error ? { error: e.error } : {}),
         ...onExitView(e),
+        ...startingView(e),
       };
     else {
       const exit = await readExit(e.exitPath);
@@ -2193,6 +2260,7 @@ export class Muster {
         ...(exit ? { exit_code: exit.code, signal: exit.signal } : {}),
         ...(e.error ? { error: e.error } : {}),
         ...onExitView(e),
+        ...startingView(e),
       };
     }
   }

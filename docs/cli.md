@@ -490,3 +490,47 @@ and observation never sends keys or answers the dialog. PTY and macOS Terminal
 hosts currently lack screen observation and remain `unknown`; no Codex
 held-message equivalent is claimed. `unknown` is not proof that typing is safe:
 screen detection is heuristic and a dialog can appear after an observation.
+
+
+## Identifying launches before readiness
+
+While a launch is `starting`, `list` includes `name`, `title`, `cwd` and
+`provisional: true`, alongside the existing `launch_id`, metadata and provenance.
+The display label comes from the sanitized explicit `--title`, otherwise the
+folder name plus runtime. It is not a runtime identity or Tin Can address.
+The existing restrictions on `--title` still apply: only tmux sessions accept it.
+Legacy starting records use the folder/runtime fallback. Running and ended
+records keep their existing fields and naming behavior.
+
+For subprocess callers that need the ID early, opt in with
+`--options report-launch`. After reservation and before preparation/spawn,
+Muster writes one newline-delimited JSON event to **stderr**, for example:
+
+```json
+{"event":"launch-reserved","launch_id":"example-launch-id","state":"starting","reused":false,"runtime":"claude","kind":"session","cwd":"/work/project","name":"review","title":"review","provisional":true}
+```
+
+Parse stderr by lines and select `event: "launch-reserved"`; other diagnostic
+lines can also appear there. Stdout still contains the usual final result,
+`run` still waits for readiness, exit codes keep their meaning, and PTY ownership
+is unchanged. The event means a reservation exists, **not that a process has
+started or is ready**. Later failure can follow it. Use the stable `launch_id`
+with `list` or `wait`; a runtime conversation ID may arrive later. This early
+report is not a startup-cancellation handle: stopping a reservation before its
+process ownership is recorded does not currently guarantee that preparation
+will not subsequently spawn the agent. E10 does not change that lifecycle.
+
+A matching request-key retry reports the existing ID and actual recorded state
+with `reused: true`, then follows the existing retry behavior: a starting or ended
+launch still produces its usual error. Conflicting retries and other refusals
+before reservation emit no event. Adding or removing `report-launch` does not
+change request-key matching. Display fields on retries come from the original
+reservation, never replacement request text. Only starting events carry the
+provisional display fields. Prompts, environment, scripts and credentials are
+not included; keep explicit titles non-secret.
+
+JavaScript callers may pass a synchronous reservation reporter as the third
+argument to `Muster.run(input, requester, reporter)` with the same option.
+A throwing reporter fails a new reservation before spawn; it never changes an
+existing reused launch. The option is refused without a reporter, including
+through MCP; it does not introduce MCP progress messages or a receipt file.
