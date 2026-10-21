@@ -38,21 +38,24 @@ export async function codexPolicyArgs(
    * refuses the whole config with "invalid transport".
    */
   ignoreUserConfig = false,
+  inheritProfile = false,
 ): Promise<string[]> {
-  const args = [
-    "--disable",
-    "hooks",
-    "--disable",
-    "plugins",
-    "--disable",
-    "remote_plugin",
-    "--disable",
-    "apps",
-    "--disable",
-    "skill_mcp_dependency_install",
-    "-c",
-    "notify=[]",
-  ];
+  const args: string[] = inheritProfile
+    ? []
+    : [
+        "--disable",
+        "hooks",
+        "--disable",
+        "plugins",
+        "--disable",
+        "remote_plugin",
+        "--disable",
+        "apps",
+        "--disable",
+        "skill_mcp_dependency_install",
+        "-c",
+        "notify=[]",
+      ];
   async function list(extra: string[]) {
     try {
       const { stdout } = await exec(
@@ -80,7 +83,7 @@ export async function codexPolicyArgs(
   // with neither command nor url, and Codex refuses the whole config with
   // "invalid transport". The names are still reserved below, so a requested
   // server never collides with one the user happens to have defined.
-  if (!ignoreUserConfig)
+  if (!ignoreUserConfig && !inheritProfile)
     for (const server of inherited) {
       if (
         typeof server.name !== "string" ||
@@ -91,7 +94,9 @@ export async function codexPolicyArgs(
         );
       args.push("-c", `mcp_servers.${server.name}.enabled=false`);
     }
-  const expected: string[] = [];
+  const expected: string[] = inheritProfile
+    ? inherited.filter((s) => s.enabled !== false).map((s) => s.name)
+    : [];
   for (const server of selected) {
     let name = server.name;
     let suffix = 0;

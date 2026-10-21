@@ -684,3 +684,45 @@ test("MCP bridge closes upstream after initialization rejection", async () => {
     await exited;
   }
 });
+
+for (const runtime of ["claude", "codex"] as const)
+  test(`${runtime} inherit-profile adds explicit MCP without shadowing a profile name`, async () => {
+    const { f, m } = await setup({ allow_dangerous_flags: true });
+    // The fake Codex enumerator declares this name as already present.
+    const req = {
+      runtime,
+      prompt: "profile plus explicit MCP",
+      cwd: f.root,
+      host: "pty",
+      level: "open",
+      options: ["inherit-profile"],
+      mcp: ["fixture"],
+    };
+    f.env.MUSTER_FAKE_MCP = "fixture";
+    const profile = await Muster.create({ home: f.home, env: f.env });
+    try {
+      const peer = asSession(await profile.run(req));
+      const argv = (await lines(join(f.root, "starts.jsonl")))[0]
+        .argv as string[];
+      if (runtime === "claude") {
+        const servers = JSON.parse(
+          argv[argv.indexOf("--mcp-config") + 1]!,
+        ).mcpServers;
+        expect(servers).not.toHaveProperty("fixture");
+        const names = Object.keys(servers);
+        expect(names).toHaveLength(1);
+        expect(names[0]).toMatch(/^muster_[a-f0-9-]+_fixture$/);
+        expect(servers[names[0]!].args.at(-1)).toBe("fixture");
+        expect(argv).not.toContain("--strict-mcp-config");
+      } else {
+        expect(argv.join(" ")).toContain("mcp_servers.muster_fixture_1=");
+        expect(argv.join(" ")).not.toContain(
+          "mcp_servers.fixture.enabled=false",
+        );
+      }
+      await profile.stop(peer.canonical_id);
+    } finally {
+      await profile.close();
+      await m.close();
+    }
+  });

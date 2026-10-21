@@ -76,7 +76,9 @@ export function selectMcp(req: RunRequest, config: Config): SelectedMcp[] {
   // second copy of one under muster's bridge would register the session twice.
   const names =
     req.mcp ??
-    (req.kind === "session" && req.level !== "normal"
+    (req.kind === "session" &&
+    req.level !== "normal" &&
+    !req.options.includes("inherit-profile")
       ? config.default_mcp
       : []);
   return [...new Set(names)].map((name) => {

@@ -10,6 +10,20 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Claude and Codex can opt into profile-preserving full access with
+  `--unrestricted --options inherit-profile`, gated by `allow_dangerous_flags`.
+  The explicit choice is immutable and visible in run/list/wait records.
+  Existing unrestricted launches and workspace auto-trust checks are unchanged.
+  Inherited-profile Codex sessions use `--no-daemon` for verifiable process
+  ownership and require a CLI supporting that flag (verified with 0.163.0).
+
+- `run`, `list` and `wait` add `input_status` observations for sessions waiting
+  on known dialogs. Codex/OpenCode native evidence takes precedence over bounded
+  visible tmux-screen inspection. Missing or stale evidence is `unknown`; activity
+  state is unchanged, screen text is not recorded, and nothing is auto-answered.
+
 ## 3.5.0 — 2026-10-21
 
 - `run --options` accepts `metadata=JSON` and `provenance=JSON` for caller-supplied

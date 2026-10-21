@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import TOML from "@iarna/toml";
 import type { Config, RequesterProfile } from "./config.js";
 import { claudeConfigDir, claudeSessionsDir } from "./identity/claude.js";
@@ -22,7 +22,7 @@ import { mcpName, type PreparedMcp } from "./mcp.js";
 import { claudeMcpConfig } from "./claude-policy.js";
 import { pluginName } from "./plugins.js";
 import { AGENTS, FORK_FLAG, MODEL_FLAGS, RESUME_FLAGS } from "./agents.js";
-import { launchOptionsSchema } from "./options.js";
+import { launchOptionsSchema, assertOptionsSupported } from "./options.js";
 import { launchAnnotations } from "./annotations.js";
 import type { RequesterId } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
@@ -352,6 +352,9 @@ export function paramsFingerprint(
         // Do not append anything for old-style requests: their persisted
         // fingerprints must remain usable after upgrading.
         ...(Object.keys(annotations).length ? [annotations] : []),
+        ...(req.options.includes("inherit-profile")
+          ? [{ inherit_profile: true }]
+          : []),
       ]),
     )
     .digest("hex");
@@ -918,17 +921,23 @@ export function launchArgs(
   // builders, which carry the model in their config overlay.
   const model = resolved ? ["--model", resolved.model] : [];
   const policy = resolvePermissions(req, config);
+  assertOptionsSupported(req.runtime, req.options, policy);
+  const inheritProfile = req.options.includes("inherit-profile");
   // A plugin folder brings its own skills, agents, hooks and MCP servers. A
   // sealed launch chose exactly what it loads, so it takes none of them.
   if (
     policy.permissions !== "normal" &&
+    !inheritProfile &&
     extra.some((arg) => normaliseFlag(arg) === "--plugin-dir")
   )
     throw new Error(
       "Runtime option refused: --plugin-dir (a sealed launch loads no plugins)",
     );
   assertPluginDirs(extra, req.cwd);
-  if (policy.permissions === "normal") {
+  if (
+    policy.permissions === "normal" ||
+    (req.runtime === "claude" && inheritProfile)
+  ) {
     // `resolvePermissions` refuses this outside claude; restated so the codex
     // branch below can never read `normal` as one of its own modes.
     assertNormalSupported(req.runtime);
@@ -937,8 +946,15 @@ export function launchArgs(
   if (req.runtime === "codex")
     return [
       "codex",
+      // A shared daemon owns threads outside the launch's process tree.
+      // Keep inherited-profile sessions local so identity and stop remain scoped.
+      ...(inheritProfile && req.kind === "session" ? ["--no-daemon"] : []),
       ...(req.kind === "task"
-        ? ["exec", "--ignore-user-config", "--skip-git-repo-check"]
+        ? [
+            "exec",
+            ...(inheritProfile ? [] : ["--ignore-user-config"]),
+            "--skip-git-repo-check",
+          ]
         : []),
       ...(policy.permissions === "auto"
         ? ["--approve-for-me"]
@@ -1089,12 +1105,37 @@ function normalClaudeArgs(
   model: string[],
   extra: string[],
 ): string[] {
-  assertNoDefaultBypass(claudeConfigDir(env), req.cwd);
+  const inheritProfile = req.options.includes("inherit-profile");
+  if (!inheritProfile) assertNoDefaultBypass(claudeConfigDir(env), req.cwd);
   return [
     "claude",
     ...(req.kind === "task" ? ["-p"] : []),
+    ...(inheritProfile
+      ? [
+          "--permission-mode",
+          "bypassPermissions",
+          "--settings",
+          JSON.stringify({
+            sandbox: { enabled: false },
+            ...(req.options.includes("accept-bypass-warning")
+              ? { skipDangerousModePermissionPrompt: true }
+              : {}),
+          }),
+        ]
+      : []),
     ...(mcp.length
-      ? ["--mcp-config", JSON.stringify(claudeMcpConfig(mcp, bridgePath))]
+      ? [
+          "--mcp-config",
+          JSON.stringify(
+            claudeMcpConfig(
+              mcp,
+              bridgePath,
+              inheritProfile && bridgePath
+                ? `muster_${basename(bridgePath, ".json")}`
+                : undefined,
+            ),
+          ),
+        ]
       : []),
     ...model,
     ...extra,

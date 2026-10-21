@@ -83,7 +83,7 @@ export const COMMANDS: Command[] = [
       ],
       [
         "--unrestricted",
-        "no sandbox and no permission checks; needs allow_dangerous_flags in config.toml",
+        "no sandbox and bypass permissions; needs allow_dangerous_flags in config.toml",
       ],
       [
         "--level LEVEL",
@@ -94,7 +94,7 @@ export const COMMANDS: Command[] = [
       ["--mcp NAME", "repeatable; replaces configured defaults"],
       [
         "--options NAME|KEY=JSON",
-        "repeatable; muster-side launch options — auto-approve-path records the launch directory as trusted so its one-time dialog does not block the launch (claude and codex only, and refused if the directory ships hooks or MCP servers); accept-bypass-warning accepts Claude's one-time Bypass Permissions warning so an --unrestricted launch can start (claude with bypass permissions only); metadata=JSON and provenance=JSON attach immutable caller-supplied facts (not secrets or authority; see docs/cli.md)",
+        "repeatable; muster-side launch options — inherit-profile keeps Claude/Codex profile settings, hooks, plugins and MCP with --unrestricted (requires allow_dangerous_flags); auto-approve-path records the launch directory as trusted so its one-time dialog does not block the launch (claude and codex only, and refused if the directory ships hooks or MCP servers); accept-bypass-warning accepts Claude's one-time Bypass Permissions warning so an --unrestricted launch can start (claude with bypass permissions only); metadata=JSON and provenance=JSON attach immutable caller-supplied facts (not secrets or authority; see docs/cli.md)",
       ],
       ["--no-mcp", "launch with no MCP servers"],
       ["--plugin NAME", "repeatable; replaces configured defaults (OpenCode)"],

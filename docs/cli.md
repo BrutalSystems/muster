@@ -155,3 +155,98 @@ remote requesters cannot supply `options`; the local CLI and launch-enabled
 local MCP server can. These options never forward data into runtime arguments
 or prompts. They are visible in records, output and launch logs: do not put
 credentials, tokens or other secrets in them.
+
+## Full access with the profile intact
+
+Claude and Codex accept an explicit profile-loading opt-in:
+
+```sh
+muster run claude --unrestricted --options inherit-profile \
+  --options auto-approve-path --options accept-bypass-warning --prompt 'Review this project'
+muster run codex --kind task --unrestricted --options inherit-profile --prompt 'Review this project'
+```
+
+This requires `allow_dangerous_flags = true` in Muster's configuration. It
+requests bypass permissions and no sandbox while retaining the runtime's
+normal profile configuration, instructions, hooks, plugins and MCP servers.
+Claude receives a small per-launch settings override rather than the sealed
+settings bundle. Codex tasks retain user configuration as sessions do, and
+neither kind receives Muster's hook/plugin/MCP disabling overrides in this mode.
+Codex sessions use `--no-daemon` to keep thread ownership inside the launched
+process tree; this mode requires a Codex CLI supporting that flag (verified with
+0.163.0). It does not attach the session to a shared background server.
+Existing calls without the option retain their behavior. OpenCode and restricted
+permission modes refuse the option. Remote callers cannot supply launch options.
+
+`inherit_profile` is recorded at reservation and cannot be changed through
+Muster. It appears in `run`, `list` and `wait`, including ended launches; legacy
+records omit it. Changing the option with the same request key is refused.
+The field records the explicit opt-in, not whether every profile component
+successfully loaded. A normal Claude launch still inherits its profile without
+this option.
+
+Profile MCP servers remain enabled. Explicit `--mcp` selections add Muster
+servers; `--mcp none` selects no Muster servers without removing profile servers.
+Muster's configured `default_mcp` is not added in this mode. Codex name collisions
+use a separate Muster server name to avoid merging credentials or policy. Claude
+uses a per-launch `muster_<launch-id>_<server>` namespace for explicitly selected
+servers in this mode, keeping their names separate from profile definitions.
+
+`auto-approve-path` still refuses a workspace carrying hooks or MCP configuration;
+trust that workspace yourself first. `accept-bypass-warning` remains Claude-only
+and explicit. Profile code runs with your account's privileges, and prompts are
+not an isolation boundary. Detected managed Claude policy refuses the launch,
+as it does for other explicit permission modes: Muster cannot prove its overrides
+win. Runtime checks, profile hooks and
+programs such as `sudo` can still block or refuse an operation. Muster does not
+promise that every interaction becomes unattended.
+
+## Waiting for input
+
+Session results from `run`, `list` and `wait` include an additive `input_status`
+observation. The existing activity/lifecycle `state` is unchanged:
+
+```json
+{
+  "state": "busy",
+  "input_status": {
+    "state": "waiting",
+    "reason": "permission",
+    "source": "codex-status",
+    "observed_at": "2026-01-01T12:00:00.000Z"
+  }
+}
+```
+
+A positive observation has `state: "waiting"`, a reason and evidence source.
+Otherwise all runtimes return `state: "unknown"`, `reason: "unknown"` and
+`source: "none"`. Unknown means there is no current recognized evidence; it
+never means the agent is definitely unblocked. Idleness alone is not evidence.
+`observed_at` is the time Muster sampled the evidence, not when the dialog began.
+
+Current native evidence is Codex's active approval/user-input flags and
+OpenCode's pending permission/question requests, filtered to the launched
+session. Muster reads current snapshots rather than replaying possibly stale
+notifications between CLI invocations. Claude's current session registry provides
+activity but no equivalent input-wait signal.
+
+For tmux sessions, Muster also inspects the visible pane (no scrollback), bounded
+to 64 KiB and 500 ms, and classifies only its last 16 non-trailing-blank lines
+within an 8,192-character tail. Recognized reasons include trust, bypass-warning, permission,
+MCP approval, plan approval, login, password and SSH host-key confirmation. Screen
+matches are best-effort heuristics: changed/localized dialogs and arbitrary
+programs can be missed, and displayed examples can resemble a dialog. Native
+positive evidence takes precedence. Screen text is never saved in records, logs
+or responses; only the reason, source and observation time are retained.
+
+`list` and `wait` resample evidence. An observation can clear to unknown on the
+next read; old evidence is not treated as a current wait after the process ends
+or the evidence source becomes unavailable. Starting sessions can be inspected
+once a live launch root and tmux pane are recorded. PTY hosts without native
+signals, tasks and ended records report unknown; their output files are not
+scanned for old prompts. Muster never answers dialogs or sends passwords.
+
+Readiness still uses the top-level `launch_timeout_sec` configuration (default
+30, positive values up to 600). This is a launch budget, not a timeout for dialogs
+in an already running session. Long-running MCP servers need a restart after a
+configuration change.

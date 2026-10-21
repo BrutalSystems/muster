@@ -1,3 +1,5 @@
+import type { InputStatus } from "../input-status.js";
+import type { Runtime } from "../types.js";
 export type HostCapabilities = {
   watchable: boolean;
   attachable: boolean;
@@ -51,5 +53,11 @@ export interface TerminalHost {
   setTitle?(hostRef: string, text: string): Promise<void>;
   /** The host's own addressing handle, for a command that must name it. */
   socketName?(): string;
+  /** Best-effort observation; never returns or persists screen text. */
+  inputStatus?(
+    hostRef: string,
+    runtime: Runtime,
+    deadline: number,
+  ): Promise<InputStatus>;
   attachHint(hostRef: string): string | null;
 }

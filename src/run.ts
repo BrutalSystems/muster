@@ -1,3 +1,5 @@
+import { unknownInputStatus, type InputStatus } from "./input-status.js";
+import type { SessionMetadata } from "./refresh/index.js";
 import { launchAnnotations, annotationView } from "./annotations.js";
 import {
   stat,
@@ -119,19 +121,35 @@ import { pollInterval, reapLog } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
 import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
 import type { OnExitResult } from "./registry.js";
+/** Reservation-owned facts, including absence on legacy records. */
+function launchFacts(entry: Entry) {
+  return {
+    ...annotationView(entry),
+    ...(entry.inherit_profile !== undefined
+      ? { inherit_profile: entry.inherit_profile }
+      : {}),
+  };
+}
 /** Runtime/peer refresh data cannot supply or replace reservation facts. */
 function sessionPeerView(entry: Entry): Record<string, unknown> {
   const {
+    input_status: _inputStatus,
+    inherit_profile: _inheritProfile,
     metadata: _metadata,
     provenance: _provenance,
     ...peer
   } = entry.peer ?? {};
-  return { ...peer, ...annotationView(entry) };
+  return {
+    ...peer,
+    ...launchFacts(entry),
+    input_status: entry.input_status ?? unknownInputStatus(),
+  };
 }
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
-    ...annotationView(entry),
+    input_status: unknownInputStatus(),
+    ...launchFacts(entry),
     permissions: entry.permissions!,
     sandbox: entry.sandbox!,
     mcp: entry.mcp ?? [],
@@ -680,6 +698,7 @@ export class Muster {
         kind: req.kind,
         cwd: req.cwd,
         ...launchAnnotations(req.options),
+        inherit_profile: req.options.includes("inherit-profile"),
         ...permissions,
         enforcement,
         model: model?.model ?? null,
@@ -917,7 +936,8 @@ export class Muster {
         req.cwd,
         deadline,
         prepared.servers,
-        req.kind === "task",
+        req.kind === "task" && !req.options.includes("inherit-profile"),
+        req.options.includes("inherit-profile"),
       );
       argv.splice(1, 0, ...codexPolicy);
     } else if (req.runtime === "opencode" && req.kind === "session") {
@@ -1239,7 +1259,7 @@ export class Muster {
               : req.runtime === "opencode"
                 ? "OpenCode session exists but its endpoint status is not readable"
                 : "registry exists but inbox socket is not accepting connections";
-          let metadata: { rawName: string | null; state: "idle" | "busy" };
+          let metadata: SessionMetadata;
           if (req.runtime === "codex")
             metadata = await codexReachable(rpc!, identity.id, deadline);
           else if (req.runtime === "opencode")
@@ -1282,9 +1302,15 @@ export class Muster {
             `${named.display} · ${req.runtime}`,
             provisionalTitle(req),
           );
+          const input = await this.observeInput(
+            entry,
+            metadata.input_status,
+            deadline,
+          );
           const peer = {
             kind: "session",
-            ...annotationView(entry),
+            input_status: input,
+            ...launchFacts(entry),
             ...permissions,
             enforcement,
             ...prepared.summary,
@@ -1329,10 +1355,12 @@ export class Muster {
             peer.terminal_opened = true;
             peer.terminal = terminal;
           }
+          const { input_status: _inputStatus, ...storedPeer } = peer;
           entry = await this.registry.update(entry.launchId, {
             id: identity.id,
             status: "running",
-            peer,
+            input_status: input,
+            peer: storedPeer,
           });
           await this.log.write(
             { event: "ready", launch_id: entry.launchId, peer },
@@ -1826,6 +1854,33 @@ export class Muster {
     if (!configHome || !key) return this.hostEnv;
     return { ...this.hostEnv, [key]: configHome };
   }
+  private async observeInput(
+    entry: Entry,
+    native?: InputStatus,
+    deadline = Date.now() + 600,
+  ): Promise<InputStatus> {
+    if (
+      entry.kind !== "session" ||
+      !["starting", "running"].includes(entry.status) ||
+      !entry.root ||
+      Date.now() >= deadline ||
+      !(await isSame(entry.root))
+    )
+      return unknownInputStatus();
+    if (native?.state === "waiting") return native;
+    const driver = this.drivers.find((d) => d.id === entry.host);
+    if (!entry.hostRef || !driver?.inputStatus) return unknownInputStatus();
+    try {
+      const observation = await driver.inputStatus(
+        entry.hostRef,
+        entry.runtime,
+        deadline,
+      );
+      return (await isSame(entry.root)) ? observation : unknownInputStatus();
+    } catch {
+      return unknownInputStatus();
+    }
+  }
   private async refreshed(entry: Entry): Promise<Entry> {
     if (
       entry.kind !== "session" ||
@@ -1833,7 +1888,7 @@ export class Muster {
       !entry.root ||
       !entry.peer
     )
-      return entry;
+      return { ...entry, input_status: await this.observeInput(entry) };
     const deadline = Date.now() + 1500;
     try {
       // The agent's own configuration home, which an identity launch relocates
@@ -1855,6 +1910,7 @@ export class Muster {
         },
       ])[0]!;
       return await this.registry.update(entry.launchId, {
+        input_status: await this.observeInput(entry, metadata.input_status),
         peer: {
           ...entry.peer,
           state: metadata.state,
@@ -1870,6 +1926,7 @@ export class Muster {
       // managed to open. Each implementation owns whatever it opened, so there
       // is nothing left for this to close.
       return await this.registry.update(entry.launchId, {
+        input_status: await this.observeInput(entry),
         peer: { ...entry.peer, state: "unreachable" },
       });
     }
@@ -1920,6 +1977,7 @@ export class Muster {
     if (e.kind === "session")
       return {
         ...sessionPeerView(e),
+        input_status: e.input_status ?? unknownInputStatus(),
         kind: "session",
         ...(e.permissions
           ? { permissions: e.permissions, sandbox: e.sandbox }
@@ -1947,7 +2005,8 @@ export class Muster {
       const exit = await readExit(e.exitPath);
       return {
         kind: "task",
-        ...annotationView(e),
+        input_status: unknownInputStatus(),
+        ...launchFacts(e),
         ...(e.mcp ? { mcp: e.mcp } : {}),
         ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
         ...(e.permissions
