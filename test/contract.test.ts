@@ -1,6 +1,7 @@
 import { test, expect } from "vitest";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { fixture, lines } from "./helpers.js";
@@ -45,6 +46,9 @@ for (const host of ["tmux", "pty"] as const)
           (env as any).CLAUDE_CODE_MESSAGING_SOCKET =
             "/unused-test-context-marker";
         const client = new Client({ name: "muster-contract", version: "1" });
+        // Model the host-supplied sender context required by Tin Can 3.x.
+        // This synthetic sender is isolated from the real host's threads.
+        const senderMeta = { threadId: randomUUID() };
         const transport = new StdioClientTransport({
           command: process.env.MUSTER_TINCAN_BIN ?? "tincan",
           args: [],
@@ -63,6 +67,7 @@ for (const host of ["tmux", "pty"] as const)
           }
           const response = await client.callTool({
             name: "peers",
+            _meta: senderMeta,
             arguments: {},
           });
           expect(response.isError).not.toBe(true);
@@ -78,6 +83,7 @@ for (const host of ["tmux", "pty"] as const)
           ).toBe(peer[field]);
           const sent = await client.callTool({
             name: "send_peer",
+            _meta: senderMeta,
             arguments: {
               peer: peer.canonical_id,
               message: "MUSTER_CONTRACT_DELIVERY",
@@ -87,9 +93,10 @@ for (const host of ["tmux", "pty"] as const)
           // Tin Can 1.0.0 replaced `delivered` with `outcome`. `delivered:
           // false` conflated "you addressed it wrong" with "that session is
           // gone"; `rejected` and `failed` separate them.
-          expect(JSON.parse((sent.content as any)[0].text).outcome).toBe(
-            "accepted",
-          );
+          expect(
+            JSON.parse((sent.content as any)[0].text).outcome,
+            (sent.content as any)[0].text,
+          ).toBe("accepted");
           let receipts: any[] = [];
           for (let i = 0; i < 20; i++) {
             receipts = await lines(join(f.root, "receipts.jsonl"));
