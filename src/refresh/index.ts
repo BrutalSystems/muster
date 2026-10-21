@@ -1,3 +1,4 @@
+import { resolveCodex } from "../identity/codex.js";
 import type { InputStatus } from "../input-status.js";
 import { CodexRpc } from "../codex-rpc.js";
 import { OpenCodeHttp } from "../opencode-http.js";
@@ -6,7 +7,12 @@ import { openCodeReachable } from "../reach/opencode.js";
 import { claudeReachable } from "../reach/claude.js";
 import { resolveClaude } from "../identity/claude.js";
 import { openCodeEndpointOwnedBy } from "../identity/opencode.js";
-import { isSame } from "../identity/processes.js";
+import {
+  isSame,
+  processRef,
+  descendants,
+  type ProcessRef,
+} from "../identity/processes.js";
 import type { Entry } from "../registry.js";
 
 /** What a refresh learns: the agent's own name for the session, and what it is doing. */
@@ -14,6 +20,8 @@ export type SessionMetadata = {
   rawName: string | null;
   state: "idle" | "busy";
   input_status?: InputStatus;
+  id?: string;
+  process?: ProcessRef;
 };
 
 /**
@@ -29,15 +37,64 @@ export type SessionMetadata = {
  * Throwing is how "unreachable" is reported; the caller turns it into that
  * state. Each implementation owns any connection it opens.
  */
+export class CodexTrackingUnsupported extends Error {
+  constructor() {
+    super("codex_thread_tracking_unsupported");
+  }
+}
 export async function refreshCodex(
   entry: Entry,
   env: NodeJS.ProcessEnv,
   deadline: number,
 ): Promise<SessionMetadata> {
-  // The connection is opened and closed here rather than by the caller, so a
-  // refresh cannot leak one by taking an early path out.
   const rpc = new CodexRpc(env, entry.cwd);
   try {
+    // Old CLI threads remain readable after /new. Exclude only positively
+    // identified non-foreground helpers; an unreadable/blank thread stays a
+    // candidate, never a reason to choose the readable old thread.
+    try {
+      if (!entry.root || !(await isSame(entry.root))) throw new Error();
+      const identity = await resolveCodex(
+        entry.root.pid,
+        env,
+        deadline,
+        async (id) => {
+          try {
+            const { thread } = await rpc.call(
+              "thread/read",
+              { threadId: id },
+              deadline,
+            );
+            if (
+              thread?.id === id &&
+              (thread.ephemeral === true ||
+                thread.source === "exec" ||
+                (thread.source &&
+                  typeof thread.source === "object" &&
+                  thread.source.subAgent))
+            )
+              return "non-foreground helper";
+          } catch {
+            /* Unknown candidates are retained. */
+          }
+          return null;
+        },
+      );
+      const ref = identity && (await processRef(identity.pid));
+      if (
+        !identity ||
+        !ref ||
+        identity.id !== entry.id ||
+        (entry.runtimeProcess
+          ? ref.pid !== entry.runtimeProcess.pid ||
+            ref.start !== entry.runtimeProcess.start
+          : identity.pid !== entry.peer?.pid) ||
+        !(await isSame(entry.root))
+      )
+        throw new Error();
+    } catch {
+      throw new CodexTrackingUnsupported();
+    }
     return await codexReachable(rpc, entry.id, deadline);
   } finally {
     await rpc.close();
@@ -86,12 +143,28 @@ export async function refreshClaude(
   deadline: number,
 ): Promise<SessionMetadata> {
   if (!entry.root) throw new Error("session has no root process");
+  if (!(await isSame(entry.root))) throw new Error("launch process changed");
   const identity = await resolveClaude(entry.root.pid, env, deadline);
+  const ref = identity ? await processRef(identity.pid) : undefined;
+  const bound = entry.runtimeProcess;
   if (
-    !identity ||
-    identity.id !== entry.id ||
-    !(await claudeReachable(identity.socketPath, deadline))
+    identity &&
+    (!ref ||
+      (bound
+        ? ref.pid !== bound.pid || ref.start !== bound.start
+        : identity.id !== entry.id || identity.pid !== entry.peer?.pid))
   )
+    throw new Error(
+      "runtime identity changed without a verified process binding",
+    );
+  if (!identity || !(await claudeReachable(identity.socketPath, deadline)))
     throw new Error("session unreachable");
-  return identity;
+  if (
+    !(await isSame(entry.root)) ||
+    !ref ||
+    !(await isSame(ref)) ||
+    !(await descendants(entry.root.pid, deadline)).includes(ref.pid)
+  )
+    throw new Error("runtime process ownership changed");
+  return { ...identity, process: ref };
 }

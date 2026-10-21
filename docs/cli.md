@@ -392,3 +392,41 @@ per-launch rules loading, but hook errors could allow the tool call through.
 Attachment-only trust required undocumented state, and subsequent `write_stdin`
 input did not receive a fresh `PreToolUse` check. Codex attachments therefore
 remain refused; a guard bundle is never silently reduced to prefix rules.
+
+## Conversation resets inside a launch
+
+Claude `/clear` starts a new conversation inside the existing process. Muster
+keeps the same `launch_id` and original `id`, while `session_id` and
+`canonical_id` report the current observed conversation. Use `launch_id` for
+supervision and stopping; use the current canonical address for Tin Can delivery.
+An old canonical address is historical evidence, not a forwarding address.
+Observed raw session IDs remain aliases for controlling the same launch;
+`launch_id` avoids ambiguity across separate resumed launches.
+
+`runtime_history` contains ordered observations with `session_id`,
+`canonical_id`, and `first_observed_at`. It survives exit and is available in
+run/list/wait records. These are observation times, not exact conversation start
+times. Several clears between observations may leave intermediate IDs unseen.
+A new launch starts with one observation; an older record acquires history when
+its original conversation can be verified. A legacy launch already cleared
+before that verification cannot be safely rebound automatically.
+
+A new Claude ID is accepted only for the same runtime PID and process start
+time, still under the launch root, with a reachable messaging socket. Ambiguous
+registries, process replacements and missing evidence do not cause automatic
+rebinding. `tracking_error: "runtime_identity_unverified"` explains an unsuccessful
+refresh; `unreachable` does not mean the owned process exited. Concurrent
+refreshes cannot replace a newer identity observation with an older one.
+
+Identity rotation requires the original parent-chain relationship; a reparented
+process is not rebound from process-group membership alone. Process-group
+ownership still governs stopping and exit detection.
+
+Codex `/new` tracking is currently unsupported. A bounded probe of Codex 0.163.0
+found that the same process retains multiple writer locks and that an old
+thread remains RPC-readable after the foreground thread changes. When the
+original thread cannot be uniquely verified under its launch root, Muster
+reports `tracking_error: "codex_thread_tracking_unsupported"` and `unreachable`
+instead of claiming the old thread is current. It does not choose a thread by
+lock order or modification time. Start a new supervised launch for a new Codex
+conversation. This diagnostic does not mean the owned process has exited.

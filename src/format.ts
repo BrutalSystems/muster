@@ -4,6 +4,12 @@ import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 // Human formatting is CLI-only; runtime records and MCP responses stay unchanged.
 type RecordView = LaunchAnnotations & {
+  runtime_history?: {
+    session_id: string;
+    canonical_id: string;
+    first_observed_at: string;
+  }[];
+  tracking_error?: string;
   guards?: GuardSummary;
   inherit_profile?: boolean;
   mcp_selection?: McpSelection;
@@ -109,6 +115,17 @@ function recordHuman(record: RecordView, color: boolean): string {
   }
   if (record.canonical_id)
     lines.push(field("Address", clean(record.canonical_id)));
+  if (record.tracking_error)
+    lines.push(field("Tracking", clean(record.tracking_error)));
+  if (record.runtime_history && record.runtime_history.length > 1)
+    lines.push(
+      field(
+        "Runtime history",
+        record.runtime_history
+          .map((h) => `${clean(h.session_id)} (${clean(h.first_observed_at)})`)
+          .join(" → "),
+      ),
+    );
   if (record.runtime === "opencode" && record.server_url)
     lines.push(field("Control URL", clean(record.server_url)));
   if (record.title) lines.push(field("Title", clean(record.title)));

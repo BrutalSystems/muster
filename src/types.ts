@@ -11,6 +11,13 @@ export type SessionPeer = LaunchPermissions &
   LaunchAnnotations &
   McpSummary & {
     kind: "session";
+    launch_id?: string;
+    runtime_history?: {
+      session_id: string;
+      canonical_id: string;
+      first_observed_at: string;
+    }[];
+    tracking_error?: string;
     guards?: GuardSummary;
     inherit_profile?: boolean;
     mcp_selection?: McpSelection;
@@ -64,6 +71,7 @@ export type TaskHandle = LaunchPermissions &
   LaunchAnnotations &
   McpSummary & {
     kind: "task";
+    launch_id?: string;
     guards?: GuardSummary;
     inherit_profile?: boolean;
     mcp_selection?: McpSelection;
