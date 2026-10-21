@@ -231,8 +231,9 @@ notifications between CLI invocations. Claude's current session registry provide
 activity but no equivalent input-wait signal.
 
 For tmux sessions, Muster also inspects the visible pane (no scrollback), bounded
-to 64 KiB and 500 ms, and classifies only its last 16 non-trailing-blank lines
-within an 8,192-character tail. Recognized reasons include trust, bypass-warning, permission,
+to 64 KiB and 500 ms, and classifies its last 16 non-trailing-blank lines
+within an 8,192-character tail. The held-message heading may appear earlier in
+that bounded visible tail; its active menu must end the pane. Recognized reasons include trust, bypass-warning, permission,
 MCP approval, plan approval, login, password and SSH host-key confirmation. Screen
 matches are best-effort heuristics: changed/localized dialogs and arbitrary
 programs can be missed, and displayed examples can resemble a dialog. Native
@@ -430,3 +431,13 @@ reports `tracking_error: "codex_thread_tracking_unsupported"` and `unreachable`
 instead of claiming the old thread is current. It does not choose a thread by
 lock order or modification time. Start a new supervised launch for a new Codex
 conversation. This diagnostic does not mean the owned process has exited.
+
+Claude held-message menus are observed as `input_status.state: "waiting"`,
+`reason: "held-message"`, with `source: "tmux-screen"` and an observation time.
+The detector requires the heading, both Deny/Deliver choices and a selected
+menu row in the visible pane. Dismissing or answering the dialog clears that
+observation on the next refresh. Screen/message contents are not persisted,
+and observation never sends keys or answers the dialog. PTY and macOS Terminal
+hosts currently lack screen observation and remain `unknown`; no Codex
+held-message equivalent is claimed. `unknown` is not proof that typing is safe:
+screen detection is heuristic and a dialog can appear after an observation.

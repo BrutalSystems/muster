@@ -168,7 +168,8 @@ test.each(["health", "session", "status"])(
   async (response) => {
     const { f, muster } = await openCodeMuster(
       { MUSTER_FAKE_OPENCODE_MALFORMED: response },
-      { host: "pty", launch_timeout_sec: 0.6 },
+      // This checks protocol validation, not sub-second startup scheduling.
+      { host: "pty", launch_timeout_sec: 2 },
     );
     try {
       await expect(
