@@ -10,6 +10,15 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Claude sessions remain tracked across `/clear` when the runtime process is
+  unchanged. Current session IDs and addresses update while launch IDs remain
+  stable. Ordered observed identity history survives exit in run/list/wait;
+  ambiguous or replaced processes are never rebound automatically.
+  Codex foreground-thread changes report an explicit unsupported tracking
+  diagnostic when retained writer locks cannot identify the current thread.
+
 ## 3.8.0 — 2026-10-21
 
 - Claude inherited-profile launches can attach private per-launch guard bundles

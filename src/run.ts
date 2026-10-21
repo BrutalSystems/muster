@@ -1,3 +1,4 @@
+import { CodexTrackingUnsupported } from "./refresh/index.js";
 import { claudeConfigDir } from "./identity/claude.js";
 import {
   snapshotGuards,
@@ -137,6 +138,7 @@ import type { OnExitResult } from "./registry.js";
 /** Reservation-owned facts, including absence on legacy records. */
 function launchFacts(entry: Entry) {
   return {
+    launch_id: entry.launchId,
     ...annotationView(entry),
     ...(entry.guards ? { guards: structuredClone(entry.guards) } : {}),
     ...(entry.mcp_selection !== undefined
@@ -150,6 +152,8 @@ function launchFacts(entry: Entry) {
 /** Runtime/peer refresh data cannot supply or replace reservation facts. */
 function sessionPeerView(entry: Entry): Record<string, unknown> {
   const {
+    runtime_history: _runtimeHistory,
+    tracking_error: _trackingError,
     input_status: _inputStatus,
     inherit_profile: _inheritProfile,
     mcp_selection: _mcpSelection,
@@ -161,6 +165,10 @@ function sessionPeerView(entry: Entry): Record<string, unknown> {
   return {
     ...peer,
     ...launchFacts(entry),
+    ...(entry.runtime_history
+      ? { runtime_history: structuredClone(entry.runtime_history) }
+      : {}),
+    ...(entry.tracking_error ? { tracking_error: entry.tracking_error } : {}),
     input_status: entry.input_status ?? unknownInputStatus(),
   };
 }
@@ -1310,7 +1318,8 @@ export class Muster {
           }
           if (Date.now() >= deadline)
             throw new Error("readiness completed after launch deadline");
-          if (!(await isSame(root)) || !(await processRef(identity.pid)))
+          const runtimeProcess = await processRef(identity.pid);
+          if (!(await isSame(root)) || !runtimeProcess)
             throw new Error("process exited before readiness completed");
           if (
             req.runtime === "opencode" &&
@@ -1390,6 +1399,20 @@ export class Muster {
           const { input_status: _inputStatus, ...storedPeer } = peer;
           entry = await this.registry.update(entry.launchId, {
             id: identity.id,
+            ...(req.runtime === "codex" ? { runtimeProcess } : {}),
+            ...(req.runtime === "claude"
+              ? {
+                  runtimeId: identity.id,
+                  runtimeProcess,
+                  runtime_history: [
+                    {
+                      session_id: identity.id,
+                      canonical_id: named.canonicalId,
+                      first_observed_at: new Date().toISOString(),
+                    },
+                  ],
+                }
+              : {}),
             status: "running",
             input_status: input,
             peer: storedPeer,
@@ -1398,7 +1421,7 @@ export class Muster {
             { event: "ready", launch_id: entry.launchId, peer },
             policy.logMode,
           );
-          return peer;
+          return sessionPeerView(entry) as SessionPeer;
         }
       } catch (e) {
         if (openingTerminal) throw e;
@@ -1803,7 +1826,12 @@ export class Muster {
     // reaper) can never reach a later launch of the same resumed session.
     const launch = all.find((e) => e.launchId === id);
     if (launch) return launch;
-    const exact = all.filter((e) => e.id === id);
+    const exact = all.filter(
+      (e) =>
+        e.id === id ||
+        e.runtimeId === id ||
+        e.runtime_history?.some((h) => h.session_id === id),
+    );
     if (exact.length === 1) return exact[0]!;
     // The same session under two runtimes is ambiguous. Under one, it was
     // resumed: the launch running it now, else the latest, is the one meant.
@@ -1819,7 +1847,7 @@ export class Muster {
     );
     const named: NamedPeer[] = peers.map((e) => ({
       runtime: runtimeName(e.runtime),
-      uuid: e.id,
+      uuid: e.runtimeId ?? e.id,
       rawName: String(e.peer!.name),
       slug: String(e.peer!.canonical_id)
         .split(":")[1]!
@@ -1829,7 +1857,7 @@ export class Muster {
       // canonical form carries the whole uuid, so the old surgery yielded the
       // entire id and every qualified `slug.suffix` address stopped resolving.
       // It failed quietly, as "unknown", which is why it needed a test.
-      suffix: suffixOf(e.id),
+      suffix: suffixOf(e.runtimeId ?? e.id),
       canonicalId: String(e.peer!.canonical_id),
       display: String(e.peer!.name),
     }));
@@ -1970,7 +1998,7 @@ export class Muster {
       return unknownInputStatus();
     }
   }
-  private async refreshed(entry: Entry): Promise<Entry> {
+  private async refreshed(entry: Entry, retry = true): Promise<Entry> {
     if (
       entry.kind !== "session" ||
       entry.status !== "running" ||
@@ -1994,15 +2022,19 @@ export class Muster {
       const named = assignNames([
         {
           runtime: runtimeName(entry.runtime),
-          uuid: entry.id,
+          uuid: metadata.id ?? entry.runtimeId ?? entry.id,
           rawName: metadata.rawName,
         },
       ])[0]!;
-      return await this.registry.update(entry.launchId, {
+      const observed = await this.registry.observeRuntime(entry, {
+        ...(metadata.id
+          ? { runtimeId: metadata.id, runtimeProcess: metadata.process }
+          : {}),
+        tracking_error: undefined,
         input_status: await this.observeInput(entry, metadata.input_status),
         peer: {
-          ...entry.peer,
           state: metadata.state,
+          ...(metadata.id ? { session_id: metadata.id } : {}),
           name: named.display,
           canonical_id: named.canonicalId,
           ...(entry.runtime === "opencode"
@@ -2010,13 +2042,27 @@ export class Muster {
             : {}),
         },
       });
-    } catch {
+      if (
+        retry &&
+        metadata.id &&
+        observed.runtimeId !== metadata.id &&
+        observed.status === "running"
+      )
+        return this.refreshed(observed, false);
+      return observed;
+    } catch (error) {
       // Any failure is "unreachable", including a connection this refresh never
       // managed to open. Each implementation owns whatever it opened, so there
       // is nothing left for this to close.
-      return await this.registry.update(entry.launchId, {
+      return await this.registry.observeRuntime(entry, {
+        ...(error instanceof CodexTrackingUnsupported
+          ? { tracking_error: error.message }
+          : {}),
+        ...(entry.runtime === "claude"
+          ? { tracking_error: "runtime_identity_unverified" }
+          : {}),
         input_status: await this.observeInput(entry),
-        peer: { ...entry.peer, state: "unreachable" },
+        peer: { state: "unreachable" },
       });
     }
   }

@@ -25,6 +25,16 @@ export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   mcp_selection?: McpSelection;
   /** Last bounded observation; screen text is never stored. */
   input_status?: InputStatus;
+  /** Current conversation identity; id remains the original launch identity. */
+  runtimeId?: string;
+  runtimeProcess?: ProcessRef;
+  runtimeRevision?: number;
+  runtime_history?: {
+    session_id: string;
+    canonical_id: string;
+    first_observed_at: string;
+  }[];
+  tracking_error?: string;
   id: string;
   launchId: string;
   requestKey?: string;
@@ -503,12 +513,83 @@ export class Registry {
       entry.onExit = onExit;
     });
   }
+  /** Compare-and-swap prevents a slow observation rolling back a newer one. */
+  async observeRuntime(
+    expected: Entry,
+    patch: Partial<
+      Pick<
+        Entry,
+        | "runtimeId"
+        | "runtimeProcess"
+        | "input_status"
+        | "tracking_error"
+        | "peer"
+      >
+    >,
+  ): Promise<Entry> {
+    if (
+      Object.keys(patch).some(
+        (k) =>
+          ![
+            "runtimeId",
+            "runtimeProcess",
+            "input_status",
+            "tracking_error",
+            "peer",
+          ].includes(k),
+      )
+    )
+      throw new Error(
+        "runtime observation cannot replace history or launch fields",
+      );
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === expected.launchId);
+      if (!entry) throw new Error("Unknown launch");
+      if (
+        entry.status !== "running" ||
+        (entry.runtimeRevision ?? 0) !== (expected.runtimeRevision ?? 0)
+      )
+        return structuredClone(entry);
+      if (
+        patch.runtimeId &&
+        patch.runtimeId !== (entry.runtimeId ?? entry.id)
+      ) {
+        entry.runtime_history ??= [
+          {
+            session_id: entry.id,
+            canonical_id: String(entry.peer?.canonical_id ?? ""),
+            first_observed_at: new Date().toISOString(),
+          },
+        ];
+        entry.runtime_history.push({
+          session_id: patch.runtimeId,
+          canonical_id: String(patch.peer?.canonical_id ?? ""),
+          first_observed_at: new Date().toISOString(),
+        });
+      }
+      if (!entry.runtime_history && patch.runtimeId)
+        entry.runtime_history = [
+          {
+            session_id: patch.runtimeId,
+            canonical_id: String(patch.peer?.canonical_id ?? ""),
+            first_observed_at: new Date().toISOString(),
+          },
+        ];
+      const { peer, ...rest } = patch;
+      Object.assign(entry, rest);
+      if (peer) entry.peer = { ...entry.peer, ...peer };
+      entry.runtimeRevision = (entry.runtimeRevision ?? 0) + 1;
+      return structuredClone(entry);
+    });
+  }
   async update(id: string, patch: Partial<Entry>): Promise<Entry> {
     return this.transaction(async (entries) => {
       const byLaunch = entries.find((e) => e.launchId === id);
       const entry =
         byLaunch ?? currentEntry(entries.filter((e) => e.id === id));
       if (!entry) throw new Error(`Unknown launch ${id}`);
+      if (entry.runtime_history && "runtime_history" in patch)
+        throw new Error("runtime_history is append-only");
       for (const key of [
         "requester",
         "metadata",
