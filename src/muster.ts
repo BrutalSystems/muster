@@ -88,7 +88,8 @@ async function main() {
   // the lock. Nobody is left to read the output, so dropping it is correct.
   for (const stream of [process.stdout, process.stderr])
     stream.on("error", (e: NodeJS.ErrnoException) => {
-      if (e.code !== "EPIPE") throw e;
+      // Node on macOS can report a disconnected pipe as ENOTCONN.
+      if (e.code !== "EPIPE" && e.code !== "ENOTCONN") throw e;
     });
   const argv = process.argv.slice(2);
   if (argv[0] === "--help" || argv[0] === "-h") {

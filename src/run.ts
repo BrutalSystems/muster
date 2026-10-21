@@ -1,3 +1,12 @@
+import { claudeConfigDir } from "./identity/claude.js";
+import {
+  snapshotGuards,
+  stageGuards,
+  guardDirectory,
+  assertGuardProfile,
+  type GuardSnapshot,
+} from "./guards.js";
+import { claudeSettingFiles } from "./guard.js";
 import {
   mcpSelection,
   assertRestrictedClaudeVersion,
@@ -129,6 +138,7 @@ import type { OnExitResult } from "./registry.js";
 function launchFacts(entry: Entry) {
   return {
     ...annotationView(entry),
+    ...(entry.guards ? { guards: structuredClone(entry.guards) } : {}),
     ...(entry.mcp_selection !== undefined
       ? { mcp_selection: structuredClone(entry.mcp_selection) }
       : {}),
@@ -143,6 +153,7 @@ function sessionPeerView(entry: Entry): Record<string, unknown> {
     input_status: _inputStatus,
     inherit_profile: _inheritProfile,
     mcp_selection: _mcpSelection,
+    guards: _guards,
     metadata: _metadata,
     provenance: _provenance,
     ...peer
@@ -303,6 +314,7 @@ export type TaskSpec = {
   logMode: "full" | "metadata";
   launchId: string;
   mcpConfigPath?: string;
+  guardPath?: string;
 };
 
 /**
@@ -688,6 +700,7 @@ export class Muster {
     selectedMcp: ReturnType<typeof selectMcp>;
     selectedPlugins: ReturnType<typeof selectPlugins>;
     identityName?: string;
+    guards?: GuardSnapshot;
   }): Promise<{ outcome: RunResult } | { entry: Entry }> {
     const {
       req,
@@ -708,6 +721,7 @@ export class Muster {
         kind: req.kind,
         cwd: req.cwd,
         ...launchAnnotations(req.options),
+        ...(c.guards ? { guards: c.guards.summary } : {}),
         inherit_profile: req.options.includes("inherit-profile"),
         ...(mcpSelection(req) ? { mcp_selection: mcpSelection(req) } : {}),
         ...permissions,
@@ -737,6 +751,7 @@ export class Muster {
               permissions,
               selectedMcp.map((s) => s.name),
               selectedPlugins.map((p) => p.name),
+              c.guards?.summary.digest,
             ),
           }
         : undefined,
@@ -1452,9 +1467,24 @@ export class Muster {
         );
       assertResumable(resume, agentBase, effective.cwd);
     }
+    const guards = await snapshotGuards(req.options, req.cwd);
+    if (guards) {
+      try {
+        await assertRestrictedClaudeVersion(this.hostEnv);
+      } catch {
+        throw new Error(
+          "Guard launch requires a verifiable Claude Code version (2.1.305 or later)",
+        );
+      }
+      await assertGuardProfile(
+        claudeSettingFiles(claudeConfigDir(agentBase), req.cwd),
+        agentBase,
+      );
+    }
     let argv = plannedArgv;
     let codexPolicy: string[] = [];
     const reserved = await this.reserveLaunch({
+      guards,
       req,
       effective,
       policy,
@@ -1529,6 +1559,27 @@ export class Muster {
         selectedPlugins,
         deadline,
       }));
+      if (guards) {
+        try {
+          await assertRestrictedClaudeVersion(runtimeEnv);
+        } catch {
+          throw new Error(
+            "Guard launch requires a verifiable Claude Code version (2.1.305 or later)",
+          );
+        }
+        const home = claudeConfigDir(runtimeEnv);
+        await assertClaudePolicy(runtimeEnv);
+        await assertGuardProfile(claudeSettingFiles(home, req.cwd), runtimeEnv);
+        const index = argv.indexOf("--settings");
+        if (index < 0)
+          throw new Error("Guard launch refused: missing settings overlay");
+        argv[index + 1] = await stageGuards(
+          guards,
+          this.home,
+          entry.launchId,
+          JSON.parse(argv[index + 1]!),
+        );
+      }
       const started = await this.startProcess({
         req,
         entry,
@@ -1648,6 +1699,9 @@ export class Muster {
         logMode,
         launchId: entry.launchId,
         mcpConfigPath: entry.mcpConfigPath,
+        ...(entry.guards
+          ? { guardPath: guardDirectory(this.home, entry.launchId) }
+          : {}),
       } satisfies TaskSpec),
       { mode: 0o600 },
     );
@@ -1691,6 +1745,23 @@ export class Muster {
       throw e;
     }
   }
+  private async cleanupGuards(entry: Entry) {
+    if (!entry.guards) return;
+    try {
+      await rm(guardDirectory(this.home, entry.launchId), {
+        recursive: true,
+        force: true,
+      });
+    } catch {
+      await this.log
+        .write({
+          event: "cleanup_pending",
+          launch_id: entry.launchId,
+          artifact: "guards",
+        })
+        .catch(() => {});
+    }
+  }
   private async stopEntry(entry: Entry) {
     try {
       // One second, and best effort: the kill below is what guarantees the
@@ -1700,6 +1771,7 @@ export class Muster {
       await AGENTS[entry.runtime].beforeStop?.(entry, Date.now() + 1000);
       await this.stopEntryProcesses(entry);
     } finally {
+      await this.cleanupGuards(entry);
       if (entry.mcpConfigPath) await rm(entry.mcpConfigPath, { force: true });
       if (entry.identityPath)
         await rm(entry.identityPath, { recursive: true, force: true });
@@ -1987,6 +2059,8 @@ export class Muster {
    */
   private async view(original: Entry): Promise<Record<string, any>> {
     const e = await this.refreshed(original);
+    if (!["starting", "running", "unknown"].includes(e.status))
+      await this.cleanupGuards(e);
     if (e.mcpConfigPath && !["starting", "running"].includes(e.status))
       await rm(e.mcpConfigPath, { force: true });
     if (e.identityPath && !["starting", "running"].includes(e.status))

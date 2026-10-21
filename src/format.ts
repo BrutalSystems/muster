@@ -1,8 +1,10 @@
+import type { GuardSummary } from "./guards.js";
 import type { McpSelection } from "./mcp-selection.js";
 import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 // Human formatting is CLI-only; runtime records and MCP responses stay unchanged.
 type RecordView = LaunchAnnotations & {
+  guards?: GuardSummary;
   inherit_profile?: boolean;
   mcp_selection?: McpSelection;
   input_status?: InputStatus;
@@ -130,6 +132,18 @@ function recordHuman(record: RecordView, color: boolean): string {
       lines.push(field("Permissions", clean(record.permissions)));
     if (record.sandbox) lines.push(field("Sandbox", clean(record.sandbox)));
   }
+  if (record.guards)
+    lines.push(
+      field(
+        "Guards",
+        record.guards.bundles
+          .map(
+            (b) =>
+              `${clean(b.id)} (${b.hooks} hooks, ${b.deny_rules} deny rules)`,
+          )
+          .join(", "),
+      ),
+    );
   if (record.inherit_profile)
     lines.push(field("Profile", "inherited (full access)"));
   if (record.mcp_selection)

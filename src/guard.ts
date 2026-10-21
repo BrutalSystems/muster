@@ -324,6 +324,7 @@ export function paramsFingerprint(
   permissions: LaunchPermissions,
   mcp: string[],
   plugins: string[],
+  guardDigest?: string,
 ): string {
   const annotations = launchAnnotations(req.options);
   return createHash("sha256")
@@ -354,6 +355,7 @@ export function paramsFingerprint(
         // fingerprints must remain usable after upgrading.
         ...(Object.keys(annotations).length ? [annotations] : []),
         ...(mcpSelection(req) ? [{ mcp_selection: mcpSelection(req) }] : []),
+        ...(guardDigest ? [{ guards: guardDigest }] : []),
         ...(req.options.includes("inherit-profile")
           ? [{ inherit_profile: true }]
           : []),
