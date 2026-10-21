@@ -1,3 +1,4 @@
+import type { GuardSummary } from "./guards.js";
 import type { McpSelection } from "./mcp-selection.js";
 import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
@@ -10,6 +11,7 @@ export type SessionPeer = LaunchPermissions &
   LaunchAnnotations &
   McpSummary & {
     kind: "session";
+    guards?: GuardSummary;
     inherit_profile?: boolean;
     mcp_selection?: McpSelection;
     input_status?: InputStatus;
@@ -62,6 +64,7 @@ export type TaskHandle = LaunchPermissions &
   LaunchAnnotations &
   McpSummary & {
     kind: "task";
+    guards?: GuardSummary;
     inherit_profile?: boolean;
     mcp_selection?: McpSelection;
     input_status?: InputStatus;

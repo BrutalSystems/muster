@@ -40,6 +40,21 @@ async function finish(
   finished = true;
   try {
     await output.close();
+    if (spec.guardPath)
+      await rm(spec.guardPath, { recursive: true, force: true }).catch(
+        async () => {
+          await new LaunchLog(spec.logHome)
+            .write(
+              {
+                event: "cleanup_pending",
+                launch_id: spec.launchId,
+                artifact: "guards",
+              },
+              spec.logMode,
+            )
+            .catch(() => {});
+        },
+      );
     if (spec.mcpConfigPath) await rm(spec.mcpConfigPath, { force: true });
     await new LaunchLog(spec.logHome).write(
       {

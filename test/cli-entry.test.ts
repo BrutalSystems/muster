@@ -334,7 +334,7 @@ test("a reader that leaves early neither crashes the CLI nor strands the lock", 
   child.stdout!.once("data", () => child.stdout!.destroy());
   const code = await new Promise((r) => child.once("exit", r));
   expect(stderr).not.toContain("EPIPE");
-  expect(code).toBe(0);
+  expect(code, stderr).toBe(0);
   expect(existsSync(join(home, "registry.lock"))).toBe(false);
 }, 20000);
 

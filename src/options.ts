@@ -31,7 +31,8 @@ export const launchOptionsSchema = z
         if (
           !(LAUNCH_OPTIONS as readonly string[]).includes(option) &&
           !option.startsWith("metadata=") &&
-          !option.startsWith("provenance=")
+          !option.startsWith("provenance=") &&
+          !option.startsWith("guard=")
         )
           throw new Error("Unknown launch option");
       launchAnnotations(options);
@@ -60,6 +61,13 @@ export function assertOptionsSupported(
   permissions: LaunchPermissions,
 ): void {
   for (const option of options) {
+    if (
+      option.startsWith("guard=") &&
+      (runtime !== "claude" || !options.includes("inherit-profile"))
+    )
+      throw new Error(
+        "Guard attachments require Claude with inherit-profile; unsupported runtimes are refused",
+      );
     if (
       option === "restrict-mcp" &&
       (runtime !== "claude" || !options.includes("inherit-profile"))

@@ -10,6 +10,19 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Claude inherited-profile launches can attach private per-launch guard bundles
+  with `--options guard=FILE`. Script snapshots and content digests bind retries;
+  immutable summaries survive in run/list/wait after exit. Synchronous PreToolUse
+  hooks and optional deny rules merge with the kept profile and connector
+  settings. The runner blocks errors, timeouts and malformed output without
+  echoing script diagnostics. Requires Claude Code 2.1.305 or later. Codex and
+  OpenCode attachments are refused. Guards are a second layer, not isolation
+  from full-access processes or a store for credentials.
+- CLI output also handles macOS/Node disconnected-pipe errors reported as
+  `ENOTCONN`, so a reader that exits early does not crash the launcher.
+
 ## 3.7.0 — 2026-10-21
 
 - Claude inherited-profile launches can opt into `--options restrict-mcp` with

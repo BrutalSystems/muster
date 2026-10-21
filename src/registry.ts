@@ -1,3 +1,4 @@
+import type { GuardSummary } from "./guards.js";
 import type { McpSelection } from "./mcp-selection.js";
 import { unknownInputStatus, type InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
@@ -19,6 +20,7 @@ import { LOCAL, requesterKey, type RequesterId } from "./requester.js";
 import type { Enforcement } from "./enforcement.js";
 export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   /** Explicit profile-loading opt-in; absent on legacy records. */
+  guards?: GuardSummary;
   inherit_profile?: boolean;
   mcp_selection?: McpSelection;
   /** Last bounded observation; screen text is never stored. */
@@ -369,6 +371,7 @@ export class Registry {
       Partial<LaunchPermissions> &
       Pick<
         Entry,
+        | "guards"
         | "inherit_profile"
         | "mcp_selection"
         | "metadata"
@@ -510,6 +513,7 @@ export class Registry {
         "requester",
         "metadata",
         "provenance",
+        "guards",
         "inherit_profile",
         "mcp_selection",
       ] as const)

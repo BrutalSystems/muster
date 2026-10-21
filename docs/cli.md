@@ -288,3 +288,107 @@ make network requests. It is not a sandbox or a restriction on account access
 outside MCP. Verification against Claude Code 2.1.305 confirmed that a selected
 server connected, empty selection loaded no servers, unselected plugin MCP did
 not start, and profile rules and a plugin SessionStart hook still ran.
+
+## Per-launch Claude guards
+
+Attach local policy scripts without editing a profile or workspace:
+
+```sh
+muster run claude --unrestricted --options inherit-profile \
+  --options restrict-mcp --no-mcp --options guard=/path/to/bundle.json \
+  --prompt 'Review this project'
+```
+
+`guard=FILE` is repeatable in CLI `--options` and the local MCP `options` array.
+It requires Claude Code 2.1.305 or later, `inherit-profile`, and the existing
+`allow_dangerous_flags` opt-in. It works with sessions and tasks, with or without
+`restrict-mcp`. Codex and OpenCode attachments are refused. Without a guard
+option, existing launch behavior is unchanged. Workspace auto-trust checks remain.
+
+A bundle is a strict JSON object:
+
+```json
+{
+  "version": 1,
+  "id": "local-policy",
+  "hooks": [
+    {
+      "event": "PreToolUse",
+      "script": "check.py",
+      "interpreter": "python3",
+      "matcher": "Bash",
+      "timeout": 10
+    }
+  ],
+  "files": ["policy.json"],
+  "deny": ["Bash(example-command:*)"]
+}
+```
+
+Scripts and optional asset files resolve relative to the manifest. They must
+be regular files inside that directory; symlinks, absolute attachment paths and
+`..` traversal are refused. Manifest paths resolve relative to the launch's cwd.
+A hook interpreter is `node`, `python3`, `sh`, or `bash`, resolved in the runtime's
+PATH. Optional `args` is an array of strings passed after the script path.
+Use the script's location to find bundled assets; the working directory stays
+the launch directory. External interpreters, dependencies and services are not
+snapshotted or pinned.
+
+Only synchronous `PreToolUse` command hooks are supported. The default matcher
+is `.*`, matching every tool; the default timeout is 10 seconds (1–60 allowed).
+Each hook receives Claude's JSON input on stdin. Exit 0 with empty stdout passes;
+exit 2 blocks. JSON output must contain only `hookSpecificOutput` with
+`hookEventName: "PreToolUse"`, `permissionDecision: "allow"` or `"deny"`, and an
+optional `permissionDecisionReason`. An allow result continues the normal
+profile permission checks. Other output shapes, malformed JSON, nonzero exits,
+more than 64 KiB stdout, and timeouts block. The attachment runner emits only a
+generic denial, withholding script stdout/stderr and private reasons. Input is
+limited to 1 MiB. It runs the script with the stated timeout; Claude gets two
+additional seconds to start and finish the runner. Denial reasons must be strings
+of at most 4096 characters; duplicate JSON keys are refused. Muster also adds
+`onFailure: "block"` so a missing/crashing/timed-out guard blocks rather than
+silently allowing a tool call. It refuses detected managed policy, disabled-hook
+profiles and incompatible runtimes. Existing profile hooks remain active; the
+attachment adds hooks and deny rules to the same per-launch settings overlay
+that carries Muster's sandbox and connector choices.
+
+Limits: 16 bundles, 64 KiB per manifest, 32 hooks and 64 unique attached files per
+bundle, 1 MiB per file, and 4 MiB of attached file data per launch. IDs contain
+1–64 letters, digits, underscores or dashes and must be unique within a launch.
+Unknown fields, duplicate JSON keys and invalid inputs are refused. Deny rules
+are optional, up to 128 strings of 1–1024 characters per bundle. Hook arguments
+are limited to 32 strings of at most 1024 characters each.
+
+Muster reads attachments into memory before reserving the launch, then writes
+private per-launch copies. The runtime receives a settings-file path, not raw
+rules or scripts in its launch arguments. Later source edits do not change the
+snapshot. Private files are removed on stop/failure, task exit, or when an ended
+session is refreshed. Cleanup failures emit a content-free `cleanup_pending`
+audit event and are retried on later refreshes; they do not block other artifact
+cleanup or hide ended records. A crashed launch owner may leave files until
+reconciliation.
+
+The immutable `guards` summary contains an aggregate digest and each bundle's
+ID, digest, event names, hook count and deny-rule count. Run/list/wait retain it
+after exit. It records delivery configuration, not proof that a policy is
+complete or every hook ran. Retries compare canonical manifests and attached
+file bytes; changing a script at the same path conflicts. JSON object key order
+and whitespace do not matter; bundle/hook/argument order does. Old records omit
+`guards`. Source paths, scripts and rule contents are not stored in the registry
+or Muster's launch audit log.
+
+Keep IDs non-sensitive. Bundles are private policy files, **not secret storage**:
+the full-access process can read or modify them. Hook arguments and output can
+appear in runtime diagnostics or transcripts, and captured task output retains
+what the runtime prints. Do not put credentials or secrets in scripts, rule
+strings, arguments or denial messages. A hook sees tool calls, not every action
+inside a program; catching a literal command inside `sh -c` does not catch every
+encoded or indirect equivalent. Keep critical credentials outside the session's
+reach when that operation must be impossible.
+
+
+The bounded Codex 0.163.0 compatibility probe found working hook injection and
+per-launch rules loading, but hook errors could allow the tool call through.
+Attachment-only trust required undocumented state, and subsequent `write_stdin`
+input did not receive a fresh `PreToolUse` check. Codex attachments therefore
+remain refused; a guard bundle is never silently reduced to prefix rules.
