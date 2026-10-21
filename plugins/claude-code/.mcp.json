@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "muster": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@brutalsystems/muster@3.11.1",
+        "mcp"
+      ]
+    }
+  }
+}

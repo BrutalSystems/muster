@@ -9,10 +9,22 @@
  * the schema is `additionalProperties: false`, an omitted key is not merely
  * undocumented — a conformant client is told it is INVALID.
  * `test/mcp-run-schema.test.ts` is what ends that class.
+ *
+ * Annotations are hints a host may act on, not enforcement: what `muster mcp`
+ * will dispatch is still decided by its tool gate. Every tool acts only on this
+ * machine, so none is open-world. `test/mcp-tool-metadata.test.ts` holds them.
  */
 export const MCP_TOOLS = [
   {
     name: "run",
+    title: "Launch agent",
+    annotations: {
+      title: "Launch agent",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
     description:
       "Launch an instructed agent. Sessions return only when reachable; tasks return a non-messageable run handle.",
     inputSchema: {
@@ -150,6 +162,12 @@ export const MCP_TOOLS = [
   },
   {
     name: "list",
+    title: "List sessions and tasks",
+    annotations: {
+      title: "List sessions and tasks",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     description:
       "List Muster-owned sessions and tasks, including host capabilities.",
     inputSchema: {
@@ -160,6 +178,14 @@ export const MCP_TOOLS = [
   },
   {
     name: "stop",
+    title: "Stop session or task",
+    annotations: {
+      title: "Stop session or task",
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     description:
       "Stop a Muster-owned run by durable id or unambiguous peer name.",
     inputSchema: {
@@ -171,6 +197,12 @@ export const MCP_TOOLS = [
   },
   {
     name: "output",
+    title: "Read task output",
+    annotations: {
+      title: "Read task output",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
     description: "Read captured output from a task run.",
     inputSchema: {
       type: "object",
@@ -181,6 +213,14 @@ export const MCP_TOOLS = [
   },
   {
     name: "title",
+    title: "Retitle session",
+    annotations: {
+      title: "Retitle session",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     description:
       "Retitle a running tmux session by durable id or unambiguous peer name, from outside its agent.",
     inputSchema: {

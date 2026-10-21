@@ -142,15 +142,24 @@ running.
 
 ## muster's MCP tools in this session
 
-The CLI above always works. muster's MCP tools (`mcp__muster__*`) are an
-optional extra, registered per Claude profile:
+The CLI above always works. muster's MCP tools are an extra, and their names
+say where they came from:
 
-| Registered as | Tools |
-|---|---|
-| `muster mcp install` (the default) | `list`, `output` — read-only |
-| `muster mcp install --allow-launch` | also `run`, `stop`, `title` |
+| Registered by | Names | Tools |
+|---|---|---|
+| this plugin | `mcp__plugin_muster_muster__*` | `list`, `output` — read-only, always |
+| `muster mcp install` (the default) | `mcp__muster__*` | `list`, `output` — read-only |
+| `muster mcp install --allow-launch` | `mcp__muster__*` | also `run`, `stop`, `title` |
 
-If the tools are missing and the user wants them, **offer** to run
+The plugin's server starts with `npx` at the plugin's own release, so it works
+without a global install. It never has launch tools. A session with both forms
+runs two servers and sees `list` and `output` twice; that is harmless, but for
+launch authority the setup is `muster mcp install --allow-launch` with the
+plugin's server turned off in `/mcp`.
+
+If `list` and `output` are missing, the plugin's server has not started:
+see [troubleshooting](troubleshooting.md). If the user wants the launch tools,
+or any tools without the plugin, **offer** to run
 `muster mcp install` and ask before running it. Run it without
 `--allow-launch` unless the user has said explicitly that they want this
 Claude to launch and stop sessions; wanting the tools is not that. Never add

@@ -211,6 +211,42 @@ way, so it can still be driven by hand to debug it. Diagnostics go to stderr,
 never protocol stdout. Schemas match the CLI (`args` is the array of optional
 runtime arguments).
 
+### The plugin's server, or your own
+
+The Claude Code plugin (`claude plugin install muster@muster`) brings the
+read-only server with it. Its `.mcp.json` runs
+`npx -y @brutalsystems/muster@<version> mcp`, pinned to the release the plugin
+was cut from, so installing the plugin alone gives a working `list` and
+`output`. It never passes `--allow-launch`: installing a plugin is not the
+deliberate grant.
+
+| Registered by | Tool names | Launch tools |
+| --- | --- | --- |
+| the plugin | `mcp__plugin_muster_muster__<tool>` | never |
+| `muster mcp install` | `mcp__muster__<tool>` | with `--allow-launch` |
+
+Permission allow-lists name the form the session actually has.
+
+Use one or the other. A session with both runs two Muster servers and sees
+`list` and `output` twice. That is safe, since both read the same registry
+under the same lock that two CLI commands share, but it is noise. If you want
+launch authority, run `muster mcp install --allow-launch` and turn the plugin's
+`muster` server off in `/mcp`, keeping the plugin for its skill.
+
+`npx` runs a global `muster` instead of downloading one when that global
+install is the pinned version. When the global copy is a different version,
+`npx` fetches the pinned one, so the plugin's server never silently runs a
+stale release. The registry is shared, though: keep the global CLI on the same
+release as the plugin, which [updating](../README.md#keeping-it-up-to-date)
+both does.
+
+The first start downloads Muster into the npm cache. node-pty's install script
+does not need to run on macOS or Windows: its prebuilt binary loads at runtime,
+and Muster makes the macOS `spawn-helper` executable itself before a pty
+launch. On Linux there is no prebuilt binary, so `npx` builds node-pty from
+source, which needs Python, `make` and a C++ compiler. Without those, use the
+global install and `muster mcp install`.
+
 ### Registering it with Claude Code
 
 ```sh
