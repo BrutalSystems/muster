@@ -335,7 +335,8 @@ Use the script's location to find bundled assets; the working directory stays
 the launch directory. External interpreters, dependencies and services are not
 snapshotted or pinned.
 
-Only synchronous `PreToolUse` command hooks are supported. The default matcher
+Synchronous `PreToolUse` and `Stop` command hooks are supported.
+For `PreToolUse`: The default matcher
 is `.*`, matching every tool; the default timeout is 10 seconds (1–60 allowed).
 Each hook receives Claude's JSON input on stdin. Exit 0 with empty stdout passes;
 exit 2 blocks. JSON output must contain only `hookSpecificOutput` with
@@ -352,6 +353,54 @@ silently allowing a tool call. It refuses detected managed policy, disabled-hook
 profiles and incompatible runtimes. Existing profile hooks remain active; the
 attachment adds hooks and deny rules to the same per-launch settings overlay
 that carries Muster's sandbox and connector choices.
+
+### Turn-end reminders (`Stop`)
+
+Add a hook with `"event": "Stop"`, `script`, `interpreter`, optional `args` and
+`timeout` to a version-1 bundle. A Stop hook cannot have a `matcher`. Claude Code
+2.1.306 or later is required; Codex attachments remain refused. Up to 32 Stop
+hooks across all bundles run through one dispatcher, alongside the retained
+profile's hooks. Scripts run concurrently, each with its own timeout.
+
+Exit 0 with empty stdout passes. To request continuation, exit 0 with exactly
+`{"decision":"block","reason":"Finish the pending work."}`. Reasons must be
+non-empty strings of at most 4096 characters. The combined reason is bounded to
+4096 characters and **is sent to the model and may appear in transcripts**.
+Keep it non-secret. Malformed or duplicate-key JSON, other output shapes,
+nonzero exits, missing scripts, oversized output and timeouts are failures;
+the working dispatcher requests continuation with a generic failure reason.
+
+The allowance is **one continuation per launch, session and prompt**, shared
+across all Muster Stop hooks. An atomic private claim prevents simultaneous
+invocations from each consuming an allowance. `stop_hook_active` also consumes
+the allowance, even if a profile hook requested that continuation. Subsequent
+Stop invocations still evaluate the policies, but cannot block again. A new
+prompt (including after `/clear`) gets its own allowance. Missing or malformed
+runtime turn identity produces a failure with continuation unavailable, rather
+than guessing a new budget. Private budget files last until launch cleanup.
+
+Run/list/wait expose `stop_guard_status` separately from the immutable `guards`
+summary. It is the latest observation, retained after exit: `state` is `unknown`,
+`passed`, `unresolved` or `failed`; `continuation` is `none`, `requested`,
+`exhausted` or `unavailable`. Completed observations have `observed_at` and, when
+identity is valid, a `turn` hash. No reason or raw session/prompt input is stored
+there. A runner starts by recording unknown, so interruption during evaluation
+does not leave an old pass. This is an observation, not proof of current inbox
+contents or an authenticated safety attestation; a full-access process can
+modify its local files.
+
+An unresolved or failed check after the allowance is consumed reports exhausted
+and allows the turn to end, with a generic diagnostic. Claude ignores
+`onFailure: block` for Stop hooks: if the dispatcher itself cannot start, is
+killed or hits Claude's outer timeout, completion can still happen. No fresh
+observation is guaranteed when it cannot start. This is a bounded reminder,
+**not an absolute completion gate**, and it does not wake an idle agent.
+Profile hooks are preserved and may independently request continuations; their
+budgets are outside Muster's control. Hook timeouts bound evaluation and cleanup
+signals the policy's process group; a descendant that daemonizes into another
+process group can survive. Attached policies must not daemonize. These hooks do
+not provide process containment. Claude's own retry cap is not a reliable
+bound for tool-using continuations, so Muster enforces its own allowance.
 
 Limits: 16 bundles, 64 KiB per manifest, 32 hooks and 64 unique attached files per
 bundle, 1 MiB per file, and 4 MiB of attached file data per launch. IDs contain

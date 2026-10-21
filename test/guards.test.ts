@@ -306,3 +306,130 @@ test("guard cleanup failure does not strand the identity or hide ended records",
     await m.close();
   }
 });
+
+test("Stop bundles stage one dispatcher and refuse tool matchers", async () => {
+  const { snapshotGuards, stageGuards } = await import("../src/guards.js");
+  const { f, m, req, manifest, file } = await setup();
+  try {
+    const stop = { ...manifest.hooks[0], event: "Stop" };
+    await writeFile(
+      file,
+      JSON.stringify({ ...manifest, hooks: [manifest.hooks[0], stop, stop] }),
+    );
+    const snapshot = (await snapshotGuards(req.options, f.root))!;
+    expect(snapshot.summary.bundles[0]!.events).toEqual(["PreToolUse", "Stop"]);
+    const settings = JSON.parse(
+      await readFile(
+        await stageGuards(snapshot, f.home, "fixture", {}),
+        "utf8",
+      ),
+    );
+    expect(settings.hooks.Stop).toHaveLength(1);
+    expect(settings.hooks.Stop[0]).not.toHaveProperty("matcher");
+    const descriptor = JSON.parse(
+      await readFile(settings.hooks.Stop[0].hooks[0].args[1], "utf8"),
+    );
+    expect(descriptor.hooks).toHaveLength(2);
+    await writeFile(
+      file,
+      JSON.stringify({ ...manifest, hooks: [{ ...stop, matcher: ".*" }] }),
+    );
+    await expect(snapshotGuards(req.options, f.root)).rejects.toThrow(
+      /Guard bundle refused/,
+    );
+  } finally {
+    await m.close();
+  }
+});
+
+for (const kind of ["session", "task"])
+  test(`Stop ${kind} reports observations through exit and refuses older runtimes`, async () => {
+    const { f, m, req, file, manifest } = await setup(kind);
+    const stopManifest = {
+      ...manifest,
+      hooks: [{ ...manifest.hooks[0], event: "Stop" }],
+    };
+    await writeFile(file, JSON.stringify(stopManifest));
+    try {
+      await expect(m.run(req)).rejects.toThrow(/2\.1\.306/);
+      expect(await m.registry.all()).toHaveLength(0);
+    } finally {
+      await m.close();
+    }
+    const next = await Muster.create({
+      home: f.home,
+      env: { ...f.env, MUSTER_FAKE_VERSION: "2.1.306 (Claude Code)" },
+      drivers: [new PtyHost()],
+    });
+    let id: string | undefined;
+    try {
+      const result = await next.run(req);
+      id = durableId(result);
+      expect(result).toHaveProperty("stop_guard_status.state", "unknown");
+      const entry = (await next.registry.all())[0]!;
+      const observed = {
+        state: "unresolved" as const,
+        continuation: "exhausted" as const,
+        observed_at: new Date().toISOString(),
+      };
+      await next.registry.update(entry.launchId, {
+        stop_guard_status: observed,
+        peer: { ...entry.peer, stop_guard_status: { state: "passed" } },
+      });
+      expect((await next.list())[0]).toHaveProperty(
+        "stop_guard_status",
+        observed,
+      );
+      await next.stop(id);
+      expect((await next.wait(id, { timeoutMs: 100 })).record).toHaveProperty(
+        "stop_guard_status",
+        observed,
+      );
+      expect((await next.list())[0]).toHaveProperty(
+        "stop_guard_status",
+        observed,
+      );
+    } finally {
+      if (id) await next.stop(id).catch(() => {});
+      await next.close();
+    }
+  });
+
+test("PreToolUse default matcher retains the previous canonical digest", async () => {
+  const { createHash } = await import("node:crypto");
+  const hash = (s: string | Buffer) =>
+    createHash("sha256").update(s).digest("hex");
+  const { snapshotGuards } = await import("../src/guards.js");
+  const { f, m, req, manifest, script } = await setup();
+  try {
+    const legacy = {
+      ...manifest,
+      hooks: manifest.hooks.map((h) => ({
+        event: h.event,
+        script: h.script,
+        interpreter: h.interpreter,
+        matcher: ".*",
+        timeout: h.timeout,
+        args: [],
+      })),
+      files: [],
+      deny: manifest.deny,
+    };
+    // The previous schema emits files before deny, regardless of source key order.
+    const canonical = {
+      version: legacy.version,
+      id: legacy.id,
+      hooks: legacy.hooks,
+      files: legacy.files,
+      deny: legacy.deny,
+    };
+    const digest = hash(
+      JSON.stringify([canonical, [["check.sh", hash(await readFile(script))]]]),
+    );
+    expect(
+      (await snapshotGuards(req.options, f.root))!.summary.bundles[0]!.digest,
+    ).toBe(digest);
+  } finally {
+    await m.close();
+  }
+});

@@ -141,6 +141,14 @@ function launchFacts(entry: Entry) {
     launch_id: entry.launchId,
     ...annotationView(entry),
     ...(entry.guards ? { guards: structuredClone(entry.guards) } : {}),
+    ...(entry.guards?.bundles.some((b) => b.events.includes("Stop"))
+      ? {
+          stop_guard_status: entry.stop_guard_status ?? {
+            state: "unknown",
+            continuation: "none",
+          },
+        }
+      : {}),
     ...(entry.mcp_selection !== undefined
       ? { mcp_selection: structuredClone(entry.mcp_selection) }
       : {}),
@@ -158,6 +166,7 @@ function sessionPeerView(entry: Entry): Record<string, unknown> {
     inherit_profile: _inheritProfile,
     mcp_selection: _mcpSelection,
     guards: _guards,
+    stop_guard_status: _stopGuardStatus,
     metadata: _metadata,
     provenance: _provenance,
     ...peer
@@ -1493,10 +1502,15 @@ export class Muster {
     const guards = await snapshotGuards(req.options, req.cwd);
     if (guards) {
       try {
-        await assertRestrictedClaudeVersion(this.hostEnv);
+        await assertRestrictedClaudeVersion(
+          this.hostEnv,
+          guards.summary.bundles.some((b) => b.events.includes("Stop"))
+            ? 306
+            : 305,
+        );
       } catch {
         throw new Error(
-          "Guard launch requires a verifiable Claude Code version (2.1.305 or later)",
+          `Guard launch requires a verifiable Claude Code version (2.1.${guards.summary.bundles.some((b) => b.events.includes("Stop")) ? 306 : 305} or later)`,
         );
       }
       await assertGuardProfile(
@@ -1584,10 +1598,15 @@ export class Muster {
       }));
       if (guards) {
         try {
-          await assertRestrictedClaudeVersion(runtimeEnv);
+          await assertRestrictedClaudeVersion(
+            runtimeEnv,
+            guards.summary.bundles.some((b) => b.events.includes("Stop"))
+              ? 306
+              : 305,
+          );
         } catch {
           throw new Error(
-            "Guard launch requires a verifiable Claude Code version (2.1.305 or later)",
+            `Guard launch requires a verifiable Claude Code version (2.1.${guards.summary.bundles.some((b) => b.events.includes("Stop")) ? 306 : 305} or later)`,
           );
         }
         const home = claudeConfigDir(runtimeEnv);
