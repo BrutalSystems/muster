@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.11.1 — 2026-10-21
 
 - Stop during startup records durable cancellation and waits for the startup
   owner to finish publishing ownership and cleaning up. Cancellation before the
