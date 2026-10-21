@@ -10,6 +10,33 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- The Claude Code plugin now brings Muster's MCP server. Its `.mcp.json` runs
+  `npx -y @brutalsystems/muster@<version> mcp`, pinned to the plugin's own
+  release, so `claude plugin install muster@muster` alone gives a working
+  `list` and `output` without a global install. The plugin's server is always
+  read-only. Launch authority still comes only from
+  `muster mcp install --allow-launch`.
+- A plugin-bundled server's tools are named `mcp__plugin_muster_muster__<tool>`;
+  a `muster mcp install` registration's are `mcp__muster__<tool>`. Permission
+  allow-lists need the form the session has. Use one or the other: a session
+  with both sees `list` and `output` twice.
+- Every MCP tool now has a display `title` and annotations. `list` and `output`
+  are read-only; `stop` is destructive and idempotent; `title` is idempotent;
+  `run` is neither. None is open-world. Tool names and input schemas are
+  unchanged.
+- The `npx` pin is a version site: `npm version` rewrites and stages it with
+  the plugin manifest, and the suite fails if it drifts or is left unstaged.
+- Platform note: on macOS and Windows node-pty loads its prebuilt binary under
+  `npx` without its install script. Muster repairs the macOS `spawn-helper`
+  permission before a pty launch. Linux has no prebuilt binary, so `npx` builds
+  node-pty from source the first time, which needs Python, `make` and a C++
+  compiler.
+- Validation: the read-only server was started through `npx` from an empty npm
+  cache with install scripts ignored, and it initialized and listed its tools;
+  a pty spawn from that install succeeded. Linux was not exercised.
+
 ## 3.11.1 — 2026-10-21
 
 - Stop during startup records durable cancellation and waits for the startup

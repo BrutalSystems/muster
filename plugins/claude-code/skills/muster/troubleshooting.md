@@ -78,3 +78,12 @@ Session `state`: `idle` or `busy` while running; then `exited`, `stopped`,
   newline) itself. `MUSTER_TMUX_SERVER` names a different server.
 - Closing a viewer window detaches it; the session keeps running until
   `muster stop`.
+
+## muster's own MCP tools
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| No `mcp__plugin_muster_muster__*` tools | the plugin's server did not start: no `npx` on PATH, Node older than 22.12, or (on Linux) node-pty could not build | `/mcp` shows the error; install a build toolchain, or use the global install and `muster mcp install` |
+| `list` and `output` appear twice | both the plugin's server and a `muster mcp install` registration are loaded | harmless; turn one off in `/mcp` |
+| `run` refused, or no `run` tool | the plugin's server is read-only, always | `muster mcp install --allow-launch`, only if the user asked for launch authority |
+| The plugin's server reports a different version from `muster --version` | the plugin pins its own release; `npx` uses the global copy only when it is that version | update both: `npm update -g` and `claude plugin update muster@muster` |

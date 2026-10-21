@@ -137,8 +137,9 @@ What that verification covers is in [Verification](docs/verification.md).
 
 1. **Install the plugin.** Its `muster` skill teaches a Claude session to use
    Muster well: choosing a kind and level, reaching and stopping what it
-   launched, and the traps. It is versioned with Muster, so it describes the
-   release it came from.
+   launched, and the traps. It also brings Muster's MCP server, read-only
+   (`list`, `output`), started with `npx` at the release the plugin came from.
+   Both are versioned with Muster, so they describe and run the same release.
 
    ```sh
    claude plugin marketplace add BrutalSystems/muster
@@ -148,16 +149,23 @@ What that verification covers is in [Verification](docs/verification.md).
    Or, inside a session, `/plugin marketplace add BrutalSystems/muster` and
    then `/plugin install muster@muster`.
 
-2. **Register the MCP server** for the current Claude profile:
+   The plugin's server needs Node 22.12+ with `npx` on PATH. On macOS and
+   Windows, node-pty loads a prebuilt binary. On Linux, `npx` builds node-pty
+   from source the first time, which needs Python, `make` and a C++ compiler;
+   without them, use the global install and step 2 instead.
+
+2. **Or register the MCP server yourself**, when you want launch authority or
+   a server that runs your global `muster`:
 
    ```sh
    muster mcp install
    ```
 
-   It is read-only by default (`list`, `output`), so registering it at user
-   scope grants no launch authority. `muster mcp install --allow-launch` adds
+   It is read-only by default too. `muster mcp install --allow-launch` adds
    `run`, `stop` and `title`, and every session in that profile can then
-   launch and stop sessions. `muster mcp status` shows which you have.
+   launch and stop sessions. `muster mcp status` shows which you have. Use the
+   plugin's server or this one, not both: see
+   [plugin or registration](docs/mcp.md#the-plugins-server-or-your-own).
    Details: [MCP installation](docs/mcp.md#mcp-installation).
 
 3. **Restart Claude Code** (or start a new session) to load it.
@@ -175,6 +183,13 @@ If `which muster` resolves to a version-manager shim (for example
 `~/.asdf/shims/muster`), run that update under the Node the shim resolves to and
 reshim afterwards — `asdf reshim nodejs` — or the shim keeps pointing at the old
 binary.
+
+The plugin, and the server it pins, update with the marketplace:
+
+```sh
+claude plugin marketplace update muster
+claude plugin update muster@muster
+```
 
 An MCP server starts once at session startup, so an agent session that already
 has Muster loaded keeps running the old binary until that session restarts.

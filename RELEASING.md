@@ -120,6 +120,18 @@ the annotated tag; `postversion` runs `git push origin HEAD --follow-tags`,
 pushing the commit and its tag together. The tag is what triggers
 `publish.yml` — a bare `git push` publishes nothing.
 
+The same hook runs `scripts/stamp-plugin-version.mjs`, which writes the new
+version into the plugin's manifest and into the `npx` pin in
+`plugins/claude-code/.mcp.json`, and stages both. Never edit that pin by hand.
+The marketplace is this git repository, so a pushed `main` reaches plugin
+users at once, while npm serves the pinned version only after `publish.yml`
+finishes a few minutes later. A pin that moved in any other push would point
+plugin users at a version npm does not have yet, and their server would fail
+to start. Moved through the release command, the pin travels in the same push
+as the tag that publishes it, and the gap is those few minutes.
+`test/plugin-version.test.ts` fails when a site drifts from `package.json`, is
+not rewritten by the script, or is not staged by the hook.
+
 If `RELEASE_NOTES.md` has no `## Unreleased` section, or it is empty, the stamp
 fails and no tag is created. That is deliberate: failing here is recoverable,
 whereas failing in CI means deleting and re-pushing a tag.
