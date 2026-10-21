@@ -1,3 +1,4 @@
+import { LaunchCancelled } from "./registry.js";
 import { CodexTrackingUnsupported } from "./refresh/index.js";
 import { claudeConfigDir } from "./identity/claude.js";
 import {
@@ -163,6 +164,9 @@ function launchFacts(entry: Entry) {
   return {
     launch_id: entry.launchId,
     ...annotationView(entry),
+    ...(entry.stopRequestedAt && entry.startupPending
+      ? { cancellation_pending: true }
+      : {}),
     ...(entry.guards ? { guards: structuredClone(entry.guards) } : {}),
     ...(entry.guards?.bundles.some((b) => b.events.includes("Stop"))
       ? {
@@ -183,6 +187,7 @@ function launchFacts(entry: Entry) {
 /** Runtime/peer refresh data cannot supply or replace reservation facts. */
 function sessionPeerView(entry: Entry): Record<string, unknown> {
   const {
+    cancellation_pending: _cancellationPending,
     runtime_history: _runtimeHistory,
     tracking_error: _trackingError,
     input_status: _inputStatus,
@@ -766,6 +771,7 @@ export class Muster {
         runtime: req.runtime,
         kind: req.kind,
         cwd: req.cwd,
+        startupPending: true,
         startingDisplay: {
           name: c.title ?? provisionalTitle(req),
           title: c.title ?? provisionalTitle(req),
@@ -821,11 +827,21 @@ export class Muster {
         });
       } catch {
         // A failed observer must not strand a new reservation or mutate a reused run.
-        if (!deduped)
-          await this.registry.update(reservation.launchId, {
-            status: "failed",
-            error: "Launch reporter failed before spawn",
-          });
+        if (!deduped) {
+          try {
+            await this.registry.update(reservation.launchId, {
+              status: "failed",
+              startupPending: false,
+              error: "Launch reporter failed before spawn",
+            });
+          } catch (error) {
+            if (!(error instanceof LaunchCancelled)) throw error;
+            await this.registry.finishStartup(reservation.launchId, {
+              status: "stopped",
+              error: "Launch cancelled by stop request",
+            });
+          }
+        }
         const error = new Error("Launch reporter failed");
         if (!deduped)
           (error as Error & { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH] =
@@ -1104,6 +1120,19 @@ export class Muster {
    * outcome rather than falling through, and only a session carries on to
    * readiness.
    */
+  private async assertNotCancelled(launchId: string) {
+    const current = await this.registry.peek(launchId);
+    if (!current || current.stopRequestedAt || current.status === "stopped")
+      throw new LaunchCancelled();
+  }
+  private async ownedProcessesAlive(entry: Entry): Promise<boolean> {
+    if (entry.root && (await isSame(entry.root))) return true;
+    if (
+      (await Promise.all((entry.descendants ?? []).map(isSame))).some(Boolean)
+    )
+      return true;
+    return !!entry.group && (await groupAlive(entry.group));
+  }
   private async startProcess(c: {
     req: RunRequest;
     entry: Entry;
@@ -1180,6 +1209,7 @@ export class Muster {
       host: driver!.id,
       hostRef: launched.hostRef,
     });
+    await this.assertNotCancelled(entry.launchId);
     // Armed only once hostRef exists: the job addresses the window, and a job
     // armed before the window is recorded would poll a target the registry
     // cannot name. `schedule` is optional on the host interface, so pty and
@@ -1300,6 +1330,7 @@ export class Muster {
     // discovery at the copy while its reads stay on the host is the same bug
     // one call downstream.
     while (Date.now() < deadline) {
+      await this.assertNotCancelled(entry.launchId);
       if (deadline - Date.now() < 25) break;
       if (await isSame(root)) {
         const tracked = (
@@ -1492,7 +1523,7 @@ export class Muster {
           return sessionPeerView(entry) as SessionPeer;
         }
       } catch (e) {
-        if (openingTerminal) throw e;
+        if (openingTerminal || e instanceof LaunchCancelled) throw e;
         // An error arriving after the deadline is dropped, because most of
         // them are artifacts of the deadline itself — aborted round trips
         // that would overwrite a real diagnosis with "timed out". The cost is
@@ -1607,6 +1638,7 @@ export class Muster {
     const deadline = startedAt + this.config.launch_timeout_sec * 1000;
     let rpc: CodexRpc | undefined;
     try {
+      await this.assertNotCancelled(entry.launchId);
       await this.log.write(
         {
           event: "intent",
@@ -1645,6 +1677,7 @@ export class Muster {
         deadline,
       });
       entry = environment.entry;
+      await this.assertNotCancelled(entry.launchId);
       // `runtimeEnv` is still reassigned below — an OpenCode launch patches it
       // with the port its server ended up on — so it stays a `let` here rather
       // than being destructured as a const.
@@ -1662,6 +1695,7 @@ export class Muster {
         selectedPlugins,
         deadline,
       }));
+      await this.assertNotCancelled(entry.launchId);
       if (guards) {
         try {
           await assertRestrictedClaudeVersion(
@@ -1727,24 +1761,65 @@ export class Muster {
     } catch (e) {
       if (e && typeof e === "object")
         (e as { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH] = entry.launchId;
+      // Refresh ownership: startProcess/startTask may have published it before throwing.
+      entry = (await this.registry.peek(entry.launchId)) ?? entry;
       await this.stopEntry(entry).catch(() => {});
-      const message = (e as Error).message;
-      await this.registry.update(entry.launchId, {
-        status: "failed",
-        error: message,
-      });
+      const cancelled = !!entry.stopRequestedAt;
+      const message = cancelled
+        ? "Launch cancelled by stop request"
+        : (e as Error).message;
+      if (!cancelled)
+        await this.registry.update(entry.launchId, {
+          status: "failed",
+          error: message,
+        });
       await this.log
         .write(
-          { event: "failure", launch_id: entry.launchId, error: message },
+          {
+            event: cancelled ? "cancelled" : "failure",
+            launch_id: entry.launchId,
+            error: message,
+          },
           policy.logMode,
         )
         .catch(() => {});
       throw e;
     } finally {
-      // The readiness connection is a `codex app-server` child of THIS
-      // process. Left open, its pipes keep the event loop alive, and the CLI
-      // that launched a Codex session never exits after printing the record.
-      await rpc?.close();
+      try {
+        await rpc?.close();
+      } finally {
+        // The transaction closes the race between our last check and a stop
+        // arriving while readiness/failure is being committed.
+        if (!(await this.registry.finishStartup(reservation.launchId))) {
+          const latest = (await this.registry.peek(reservation.launchId))!;
+          let cleanupFailed = false;
+          await this.stopEntry(latest).catch(() => {
+            cleanupFailed = true;
+          });
+          const uncertain =
+            cleanupFailed ||
+            (await this.ownedProcessesAlive(latest)) ||
+            (!!latest.spawning && !latest.root);
+          const exit =
+            latest.kind === "task"
+              ? await readExit(latest.exitPath)
+              : undefined;
+          await this.registry.finishStartup(latest.launchId, {
+            status: uncertain
+              ? "unknown"
+              : endedByStop(latest, exit)
+                ? "stopped"
+                : "exited",
+            error: uncertain
+              ? "Startup cancellation could not be confirmed"
+              : "Launch cancelled by stop request",
+          });
+          const error = new LaunchCancelled();
+          (error as Error & { [FAILED_LAUNCH]?: string })[FAILED_LAUNCH] =
+            latest.launchId;
+          throw error;
+        }
+      }
     }
   }
   /**
@@ -1837,8 +1912,8 @@ export class Muster {
         ...(group ? { group } : {}),
         outputPath,
         exitPath,
-        status: "running",
       });
+      await this.registry.update(entry.launchId, { status: "running" });
       await writeFile(startPath, "start", { mode: 0o600 });
       child.unref();
       const handle = taskHandle(entry, root.pid);
@@ -2017,14 +2092,37 @@ export class Muster {
         state: (await this.view(final)).state,
       };
     }
-    await this.stopEntry(requested);
+    let current = requested;
+    const deadline = Date.now() + 5000;
+    while (current.startupPending && (await isSame(current.owner))) {
+      // Kill known processes promptly, but leave artifact cleanup to the owner
+      // while it can still be preparing or publishing ownership.
+      await this.stopEntryProcesses(current);
+      if (Date.now() >= deadline)
+        throw new Error(
+          `Stop requested for ${current.launchId}; startup cancellation is pending. Inspect or retry stop; success is not confirmed`,
+        );
+      await delay(25);
+      current = (await this.registry.peek(current.launchId)) ?? current;
+    }
+    current =
+      (await this.registry.all()).find(
+        (e) => e.launchId === current.launchId,
+      ) ?? current;
+    if (current.spawning && !current.root)
+      throw new Error(
+        `Stop outcome unknown for ${current.launchId}: process ownership was not recorded`,
+      );
+    await this.stopEntry(current);
+    if (await this.ownedProcessesAlive(current))
+      throw new Error(
+        `Stop outcome unknown for ${current.launchId}: owned processes remain alive`,
+      );
     // The agent may have exited on its own between the check and the kill;
     // an exit recorded before the stop was asked is still an exit.
     const exit =
-      requested.kind === "task"
-        ? await readExit(requested.exitPath)
-        : undefined;
-    const status = endedByStop(requested, exit) ? "stopped" : "exited";
+      current.kind === "task" ? await readExit(current.exitPath) : undefined;
+    const status = endedByStop(current, exit) ? "stopped" : "exited";
     await this.registry.update(entry.launchId, { status });
     await this.log.write({ event: status, launch_id: entry.launchId });
     return status === "stopped"
@@ -2294,6 +2392,7 @@ export class Muster {
    * through a transaction, whose sweep is what records `exited`.
    */
   private async ended(entry: Entry): Promise<boolean> {
+    if (entry.startupPending && (await isSame(entry.owner))) return false;
     if (!["starting", "running"].includes(entry.status)) return true;
     // A task's worker writes this the moment the agent exits, before it tears
     // down its group: the earliest signal there is, and the only exact one.

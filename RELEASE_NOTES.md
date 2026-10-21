@@ -10,6 +10,18 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Stop during startup records durable cancellation and waits for the startup
+  owner to finish publishing ownership and cleaning up. Cancellation before the
+  spawn claim prevents launch; cancellation after the claim stops the published
+  process before confirming success. Task workers cannot be authorised by a
+  cancelled startup.
+- Pending cancellation is reported explicitly rather than as a successful stop.
+  An owner that dies with an unpublished spawn leaves an unknown outcome.
+  Regression tests cover tmux/PTY startup phases, separate-process CLI stop,
+  task handoff, concurrent stops, finalisation races and pending timeouts.
+
 ## 3.11.0 — 2026-10-21
 
 - Starting launches show a provisional display name, title and cwd alongside

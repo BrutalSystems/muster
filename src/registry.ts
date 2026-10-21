@@ -18,6 +18,11 @@ import type { RunRequest, LaunchPermissions } from "./guard.js";
 import type { Runtime } from "./types.js";
 import { LOCAL, requesterKey, type RequesterId } from "./requester.js";
 import type { Enforcement } from "./enforcement.js";
+export class LaunchCancelled extends Error {
+  constructor() {
+    super("Launch cancelled by stop request");
+  }
+}
 export type StopGuardStatus = {
   state: "unknown" | "passed" | "unresolved" | "failed";
   continuation: "none" | "requested" | "exhausted" | "unavailable";
@@ -56,6 +61,8 @@ export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   /** Set immediately before a process is started, and the only evidence that
    * one may exist when the launch owner dies before recording it. */
   spawning?: true;
+  /** Startup owner may still publish a process or create private artifacts. */
+  startupPending?: boolean;
   unknownSince?: string;
   createdAt: string;
   owner: ProcessRef;
@@ -289,6 +296,9 @@ export class Registry {
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
       for (const entry of entries) {
+        const startupAlive =
+          entry.startupPending && (await isSame(entry.owner));
+        if (entry.startupPending && !startupAlive) entry.startupPending = false;
         if (
           entry.status === "starting" &&
           !(await isSame(entry.owner)) &&
@@ -307,11 +317,12 @@ export class Registry {
               "launch owner exited after starting a process but before recording it; " +
               "a session may be running untracked";
           } else {
-            entry.status = "failed";
+            entry.status = entry.stopRequestedAt ? "stopped" : "failed";
             entry.error = "launch owner exited before recording process";
           }
         }
         if (
+          !startupAlive &&
           ["starting", "running"].includes(entry.status) &&
           entry.root &&
           !(await isSame(entry.root))
@@ -391,6 +402,7 @@ export class Registry {
       Partial<LaunchPermissions> &
       Pick<
         Entry,
+        | "startupPending"
         | "startingDisplay"
         | "guards"
         | "inherit_profile"
@@ -436,8 +448,12 @@ export class Registry {
       // inside the transaction where the accounting has to happen. The cap is
       // global today.
       if (
-        entries.filter((e) => e.status === "starting" || e.status === "running")
-          .length >= cap
+        entries.filter(
+          (e) =>
+            e.status === "starting" ||
+            e.status === "running" ||
+            e.startupPending,
+        ).length >= cap
       )
         throw new Error(`Concurrency cap reached (${cap})`);
       const id = randomUUID();
@@ -593,12 +609,48 @@ export class Registry {
       return structuredClone(entry);
     });
   }
+  /** Release the startup owner only after any cancellation has been acknowledged.
+   * Undefined means stop won the race and the owner must clean up first. */
+  async finishStartup(
+    id: string,
+    cancelled?: { status: "stopped" | "exited" | "unknown"; error: string },
+  ): Promise<Entry | undefined> {
+    return this.transaction(async (entries) => {
+      const entry = entries.find((e) => e.launchId === id);
+      if (!entry) throw new Error("Unknown launch");
+      if (entry.stopRequestedAt && !cancelled) return undefined;
+      if (cancelled) Object.assign(entry, cancelled);
+      entry.startupPending = false;
+      clearEndedInput(entry);
+      return structuredClone(entry);
+    });
+  }
   async update(id: string, patch: Partial<Entry>): Promise<Entry> {
     return this.transaction(async (entries) => {
       const byLaunch = entries.find((e) => e.launchId === id);
       const entry =
         byLaunch ?? currentEntry(entries.filter((e) => e.id === id));
       if (!entry) throw new Error(`Unknown launch ${id}`);
+      if (
+        entry.stopRequestedAt &&
+        (patch.spawning === true ||
+          patch.status === "running" ||
+          patch.status === "starting" ||
+          patch.status === "failed")
+      )
+        throw new LaunchCancelled();
+      if (
+        entry.stopRequestedAt &&
+        "stopRequestedAt" in patch &&
+        patch.stopRequestedAt !== entry.stopRequestedAt
+      )
+        throw new Error("Stop request cannot be cleared");
+      if (
+        entry.status === "stopped" &&
+        patch.status &&
+        patch.status !== "stopped"
+      )
+        throw new LaunchCancelled();
       if (entry.runtime_history && "runtime_history" in patch)
         throw new Error("runtime_history is append-only");
       for (const key of [
