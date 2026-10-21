@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.7.0 — 2026-10-21
 
 - Claude inherited-profile launches can opt into `--options restrict-mcp` with
   an explicit `--mcp` selection or `--no-mcp`. Profile rules, plugins and hooks
