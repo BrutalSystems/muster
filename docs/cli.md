@@ -515,10 +515,18 @@ lines can also appear there. Stdout still contains the usual final result,
 `run` still waits for readiness, exit codes keep their meaning, and PTY ownership
 is unchanged. The event means a reservation exists, **not that a process has
 started or is ready**. Later failure can follow it. Use the stable `launch_id`
-with `list` or `wait`; a runtime conversation ID may arrive later. This early
-report is not a startup-cancellation handle: stopping a reservation before its
-process ownership is recorded does not currently guarantee that preparation
-will not subsequently spawn the agent. E10 does not change that lifecycle.
+with `list`, `wait`, or `stop`; a runtime conversation ID may arrive later.
+Stopping during startup records durable cancellation. If stop wins before the
+spawn claim, no process is started. If spawning is already in flight, Muster
+waits for ownership and cleanup before confirming the stop. It never reports
+`stopped: true` while the startup owner can still start a process.
+
+A startup owner that cannot finish within the five-second cancellation wait
+produces a pending error, not success; run/list/wait include
+`cancellation_pending: true` until acknowledgement. Inspect or retry stop to
+confirm the result. An owner that dies after claiming a spawn but before
+recording ownership leaves an `unknown` outcome, never a claim that no process
+exists. Existing process-stop operations can extend the cancellation wait.
 
 A matching request-key retry reports the existing ID and actual recorded state
 with `reused: true`, then follows the existing retry behavior: a starting or ended
