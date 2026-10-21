@@ -1,3 +1,4 @@
+import type { McpSelection } from "./mcp-selection.js";
 import { unknownInputStatus, type InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
@@ -19,6 +20,7 @@ import type { Enforcement } from "./enforcement.js";
 export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   /** Explicit profile-loading opt-in; absent on legacy records. */
   inherit_profile?: boolean;
+  mcp_selection?: McpSelection;
   /** Last bounded observation; screen text is never stored. */
   input_status?: InputStatus;
   id: string;
@@ -368,6 +370,7 @@ export class Registry {
       Pick<
         Entry,
         | "inherit_profile"
+        | "mcp_selection"
         | "metadata"
         | "provenance"
         | "enforcement"
@@ -508,6 +511,7 @@ export class Registry {
         "metadata",
         "provenance",
         "inherit_profile",
+        "mcp_selection",
       ] as const)
         if (key in patch)
           throw new Error(`${key} is recorded once and cannot be updated`);

@@ -230,3 +230,16 @@ test("an untrusted directory is still named first on a bypass launch", () => {
   });
   expect(msg).toMatch(/workspace trust has not been accepted/);
 });
+
+test("managed policy in the effective custom config dir is refused", async () => {
+  const home = await mkdtemp(join(tmpdir(), "mu-policy-"));
+  const cfg = join(home, "custom");
+  await mkdir(cfg);
+  await writeFile(
+    join(cfg, "remote-settings.json"),
+    JSON.stringify({ permissions: {} }),
+  );
+  await expect(
+    assertClaudePolicy({ HOME: home, CLAUDE_CONFIG_DIR: cfg }),
+  ).rejects.toThrow(/Managed Claude policy/);
+});

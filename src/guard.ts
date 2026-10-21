@@ -1,3 +1,4 @@
+import { mcpSelection } from "./mcp-selection.js";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import {
@@ -352,6 +353,7 @@ export function paramsFingerprint(
         // Do not append anything for old-style requests: their persisted
         // fingerprints must remain usable after upgrading.
         ...(Object.keys(annotations).length ? [annotations] : []),
+        ...(mcpSelection(req) ? [{ mcp_selection: mcpSelection(req) }] : []),
         ...(req.options.includes("inherit-profile")
           ? [{ inherit_profile: true }]
           : []),
@@ -922,6 +924,7 @@ export function launchArgs(
   const model = resolved ? ["--model", resolved.model] : [];
   const policy = resolvePermissions(req, config);
   assertOptionsSupported(req.runtime, req.options, policy);
+  mcpSelection(req);
   const inheritProfile = req.options.includes("inherit-profile");
   // A plugin folder brings its own skills, agents, hooks and MCP servers. A
   // sealed launch chose exactly what it loads, so it takes none of them.
@@ -1106,6 +1109,7 @@ function normalClaudeArgs(
   extra: string[],
 ): string[] {
   const inheritProfile = req.options.includes("inherit-profile");
+  const restricted = !!mcpSelection(req);
   if (!inheritProfile) assertNoDefaultBypass(claudeConfigDir(env), req.cwd);
   return [
     "claude",
@@ -1117,20 +1121,30 @@ function normalClaudeArgs(
           "--settings",
           JSON.stringify({
             sandbox: { enabled: false },
+            ...(restricted
+              ? {
+                  disableClaudeAiConnectors: true,
+                  env: {
+                    CLAUDE_CODE_AUTO_CONNECT_IDE: "false",
+                    ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+                  },
+                }
+              : {}),
             ...(req.options.includes("accept-bypass-warning")
               ? { skipDangerousModePermissionPrompt: true }
               : {}),
           }),
         ]
       : []),
-    ...(mcp.length
+    ...(restricted ? ["--strict-mcp-config", "--no-chrome"] : []),
+    ...(mcp.length || restricted
       ? [
           "--mcp-config",
           JSON.stringify(
             claudeMcpConfig(
               mcp,
               bridgePath,
-              inheritProfile && bridgePath
+              inheritProfile && !restricted && bridgePath
                 ? `muster_${basename(bridgePath, ".json")}`
                 : undefined,
             ),

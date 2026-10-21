@@ -250,3 +250,41 @@ Readiness still uses the top-level `launch_timeout_sec` configuration (default
 30, positive values up to 600). This is a launch budget, not a timeout for dialogs
 in an already running session. Long-running MCP servers need a restart after a
 configuration change.
+
+## Restrict MCP while keeping the Claude profile
+
+```sh
+muster run claude --unrestricted --options inherit-profile \
+  --options restrict-mcp --mcp example --prompt 'Review this project'
+muster run claude --unrestricted --options inherit-profile \
+  --options restrict-mcp --no-mcp --prompt 'Review this project'
+```
+
+`restrict-mcp` keeps profile instructions, settings, plugins and hooks, but uses
+strict MCP configuration to load only the explicitly selected Muster servers.
+All claude.ai account connectors, automatic IDE MCP and Chrome integration are
+disabled for this launch. Plugin MCP servers are excluded even though the plugins
+and their hooks remain loaded. The option requires Claude Code 2.1.305 or later,
+`inherit-profile`, full access and `allow_dangerous_flags = true`. Unsupported
+runtimes, unverifiable versions and detected managed policy are refused.
+The existing refusal to auto-trust workspace hooks or MCP configuration remains.
+
+Selection must be explicit: use `--mcp NAME` (repeatable), `--no-mcp` for none,
+or the MCP API's `mcp: []`. Omitting selection is refused. Unknown server names
+are refused. Without `restrict-mcp`, existing additive behavior is unchanged.
+Selected account connectors and other runtimes are not supported by this option.
+
+`mcp_selection` is recorded at reservation and returned by run/list/wait, including
+ended records. It contains `mode: "explicit"`, sorted source-qualified server IDs
+such as `muster:example`, and `claude_ai: false`. It cannot be changed through
+Muster. IDs name configured Muster servers, not frozen server definitions or
+credentials. Changing selection or enabling/disabling restriction conflicts with
+an existing request key; reordering the same selection does not. Old records omit
+the field; an explicit empty selection records an empty `servers` array.
+
+This controls the runtime's startup MCP inventory, not the authority of a
+full-access process. Retained hooks and the agent can still execute programs or
+make network requests. It is not a sandbox or a restriction on account access
+outside MCP. Verification against Claude Code 2.1.305 confirmed that a selected
+server connected, empty selection loaded no servers, unselected plugin MCP did
+not start, and profile rules and a plugin SessionStart hook still ran.

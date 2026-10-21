@@ -1,3 +1,7 @@
+import {
+  mcpSelection,
+  assertRestrictedClaudeVersion,
+} from "./mcp-selection.js";
 import { unknownInputStatus, type InputStatus } from "./input-status.js";
 import type { SessionMetadata } from "./refresh/index.js";
 import { launchAnnotations, annotationView } from "./annotations.js";
@@ -125,6 +129,9 @@ import type { OnExitResult } from "./registry.js";
 function launchFacts(entry: Entry) {
   return {
     ...annotationView(entry),
+    ...(entry.mcp_selection !== undefined
+      ? { mcp_selection: structuredClone(entry.mcp_selection) }
+      : {}),
     ...(entry.inherit_profile !== undefined
       ? { inherit_profile: entry.inherit_profile }
       : {}),
@@ -135,6 +142,7 @@ function sessionPeerView(entry: Entry): Record<string, unknown> {
   const {
     input_status: _inputStatus,
     inherit_profile: _inheritProfile,
+    mcp_selection: _mcpSelection,
     metadata: _metadata,
     provenance: _provenance,
     ...peer
@@ -627,6 +635,8 @@ export class Muster {
     // prove, and obeys managed policy exactly as a hand launch does.
     if (req.runtime === "claude" && permissions.permissions !== "normal")
       await assertClaudePolicy(this.hostEnv);
+    if (req.options.includes("restrict-mcp"))
+      await assertRestrictedClaudeVersion(this.hostEnv);
     if (req.runtime === "opencode")
       await assertOpenCodeVersion(this.hostEnv, "1.18.31", Date.now() + 4000);
     // After the driver, not beside resolveModel: the host that runs is
@@ -699,6 +709,7 @@ export class Muster {
         cwd: req.cwd,
         ...launchAnnotations(req.options),
         inherit_profile: req.options.includes("inherit-profile"),
+        ...(mcpSelection(req) ? { mcp_selection: mcpSelection(req) } : {}),
         ...permissions,
         enforcement,
         model: model?.model ?? null,
@@ -823,6 +834,8 @@ export class Muster {
         identity: identityName,
       });
     }
+    if (req.options.includes("restrict-mcp"))
+      await assertClaudePolicy(runtimeEnv);
     // Where the agent will record its session. Distinct from `hostEnv`, which
     // keeps spawning Muster's own helpers — see `resolutionEnv`.
     //
@@ -870,6 +883,10 @@ export class Muster {
           trustHome,
           await workspaceTrustKey(req.cwd),
         );
+    }
+    if (req.options.includes("restrict-mcp")) {
+      runtimeEnv.CLAUDE_CODE_AUTO_CONNECT_IDE = "false";
+      runtimeEnv.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
     }
     const resolveEnv = this.resolutionEnv(req.runtime, configHome);
     let bridgePath: string | undefined;

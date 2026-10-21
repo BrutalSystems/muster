@@ -12,7 +12,7 @@ const codexHome=process.env.CODEX_HOME||path.join(process.env.HOME||root,'.codex
 const records=path.join(codexHome,'threads');fs.mkdirSync(records,{recursive:true});
 const argv=process.argv.slice(2), runtime=path.basename(process.argv[1]).startsWith('claude')?'claude':'codex';
 const live=()=>fs.readdirSync(records).map(f=>JSON.parse(fs.readFileSync(path.join(records,f),'utf8'))).filter(t=>{try{process.kill(t.pid,0);return true;}catch{return false;}});
-if(argv.includes('--version')){console.log('fake 1');process.exit(0);}
+if(argv.includes('--version')){console.log(process.env.MUSTER_FAKE_VERSION || 'fake 1');process.exit(0);}
 if(argv.includes('mcp')&&argv.includes('list')){
  if(process.env.MUSTER_FAKE_MCP_FAIL_CONFIG==='1' && argv.some(v=>v.startsWith('mcp_servers.fixture='))){console.error('config failed');process.exit(1);}
  // Real codex rejects --ignore-user-config on `mcp list`; it is an exec flag.

@@ -1,8 +1,10 @@
+import type { McpSelection } from "./mcp-selection.js";
 import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 // Human formatting is CLI-only; runtime records and MCP responses stay unchanged.
 type RecordView = LaunchAnnotations & {
   inherit_profile?: boolean;
+  mcp_selection?: McpSelection;
   input_status?: InputStatus;
   mcp?: string[];
   mcp_warnings?: string[];
@@ -130,6 +132,13 @@ function recordHuman(record: RecordView, color: boolean): string {
   }
   if (record.inherit_profile)
     lines.push(field("Profile", "inherited (full access)"));
+  if (record.mcp_selection)
+    lines.push(
+      field(
+        "MCP selection",
+        `${record.mcp_selection.servers.map(clean).join(", ") || "none"}; account connectors disabled`,
+      ),
+    );
   // Only when known: a null means the child chose its own model, and "-" in a
   // human listing would read as a value rather than an absence. The source is
   // shown because "pinned by the caller" and "fell back to the configured
