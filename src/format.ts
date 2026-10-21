@@ -1,3 +1,4 @@
+import type { StopGuardStatus } from "./registry.js";
 import type { GuardSummary } from "./guards.js";
 import type { McpSelection } from "./mcp-selection.js";
 import type { InputStatus } from "./input-status.js";
@@ -11,6 +12,8 @@ type RecordView = LaunchAnnotations & {
   }[];
   tracking_error?: string;
   guards?: GuardSummary;
+  stop_guard_status?:
+    StopGuardStatus | { state: "unknown"; continuation: "none" };
   inherit_profile?: boolean;
   mcp_selection?: McpSelection;
   input_status?: InputStatus;
@@ -161,6 +164,15 @@ function recordHuman(record: RecordView, color: boolean): string {
           .join(", "),
       ),
     );
+  if (record.stop_guard_status) {
+    const status = record.stop_guard_status;
+    lines.push(
+      field(
+        "Stop guard",
+        `${clean(status.state)}; continuation ${clean(status.continuation)}${"observed_at" in status ? ` (${clean(status.observed_at)})` : ""}`,
+      ),
+    );
+  }
   if (record.inherit_profile)
     lines.push(field("Profile", "inherited (full access)"));
   if (record.mcp_selection)

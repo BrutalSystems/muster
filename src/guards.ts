@@ -25,16 +25,16 @@ const schema = z
       .array(
         z
           .object({
-            event: z.literal("PreToolUse"),
+            event: z.enum(["PreToolUse", "Stop"]),
             script: relative,
             interpreter: z.enum(["node", "python3", "sh", "bash"]),
             matcher: z
               .string()
               .max(256)
-              .default(".*")
+              .optional()
               .refine((s) => {
                 try {
-                  new RegExp(s);
+                  if (s !== undefined) new RegExp(s);
                   return true;
                 } catch {
                   return false;
@@ -43,7 +43,20 @@ const schema = z
             timeout: z.number().int().min(1).max(60).default(10),
             args: z.array(z.string().max(1024)).max(32).default([]),
           })
-          .strict(),
+          .strict()
+          .refine((h) => h.event !== "Stop" || h.matcher === undefined)
+          .transform((h) =>
+            h.event === "PreToolUse"
+              ? {
+                  event: h.event,
+                  script: h.script,
+                  interpreter: h.interpreter,
+                  matcher: h.matcher ?? ".*",
+                  timeout: h.timeout,
+                  args: h.args,
+                }
+              : h,
+          ),
       )
       .min(1)
       .max(32),
@@ -57,7 +70,7 @@ export type GuardSummary = {
   bundles: {
     id: string;
     digest: string;
-    events: ["PreToolUse"];
+    events: ("PreToolUse" | "Stop")[];
     hooks: number;
     deny_rules: number;
   }[];
@@ -145,11 +158,16 @@ export async function snapshotGuards(
       summaries.push({
         id: manifest.id,
         digest,
-        events: ["PreToolUse"],
+        events: [...new Set(manifest.hooks.map((h) => h.event))].sort(),
         hooks: manifest.hooks.length,
         deny_rules: manifest.deny.length,
       });
     }
+    if (
+      bundles.flatMap((b) => b.manifest.hooks).filter((h) => h.event === "Stop")
+        .length > 32
+    )
+      throw new Error();
     return {
       bundles,
       summary: { digest: hash(JSON.stringify(summaries)), bundles: summaries },
@@ -197,6 +215,7 @@ export async function stageGuards(
     const root = guardDirectory(home, launchId);
     await mkdir(root, { recursive: true, mode: 0o700 });
     const hooks: unknown[] = [];
+    const stops: { command: string; args: string[]; timeout: number }[] = [];
     const deny: string[] = [];
     for (let i = 0; i < snapshot.bundles.length; i++) {
       const { manifest, files } = snapshot.bundles[i]!;
@@ -208,6 +227,14 @@ export async function stageGuards(
       }
       for (let j = 0; j < manifest.hooks.length; j++) {
         const h = manifest.hooks[j]!;
+        if (h.event === "Stop") {
+          stops.push({
+            command: h.interpreter,
+            args: [join(dir, h.script), ...h.args],
+            timeout: h.timeout,
+          });
+          continue;
+        }
         const descriptor = join(root, `hook-${i}-${j}.json`);
         await writeFile(
           descriptor,
@@ -238,12 +265,37 @@ export async function stageGuards(
       }
       deny.push(...manifest.deny);
     }
+    const stopHooks: unknown[] = [];
+    if (stops.length) {
+      const descriptor = join(root, "stop.json");
+      await writeFile(
+        descriptor,
+        JSON.stringify({ home, launchId, hooks: stops }),
+        { mode: 0o600, flag: "wx" },
+      );
+      stopHooks.push({
+        hooks: [
+          {
+            type: "command",
+            command: process.execPath,
+            args: [
+              fileURLToPath(new URL("../dist/stop-guard.js", import.meta.url)),
+              descriptor,
+            ],
+            timeout: Math.max(...stops.map((h) => h.timeout)) + 12,
+          },
+        ],
+      });
+    }
     const target = join(root, "settings.json");
     await writeFile(
       target,
       JSON.stringify({
         ...base,
-        hooks: { PreToolUse: hooks },
+        hooks: {
+          ...(hooks.length ? { PreToolUse: hooks } : {}),
+          ...(stopHooks.length ? { Stop: stopHooks } : {}),
+        },
         permissions: { deny: [...new Set(deny)] },
       }),
       { mode: 0o600, flag: "wx" },

@@ -1,3 +1,4 @@
+import type { StopGuardStatus } from "./registry.js";
 import type { GuardSummary } from "./guards.js";
 import type { McpSelection } from "./mcp-selection.js";
 import type { InputStatus } from "./input-status.js";
@@ -19,6 +20,8 @@ export type SessionPeer = LaunchPermissions &
     }[];
     tracking_error?: string;
     guards?: GuardSummary;
+    stop_guard_status?:
+      StopGuardStatus | { state: "unknown"; continuation: "none" };
     inherit_profile?: boolean;
     mcp_selection?: McpSelection;
     input_status?: InputStatus;
@@ -73,6 +76,8 @@ export type TaskHandle = LaunchPermissions &
     kind: "task";
     launch_id?: string;
     guards?: GuardSummary;
+    stop_guard_status?:
+      StopGuardStatus | { state: "unknown"; continuation: "none" };
     inherit_profile?: boolean;
     mcp_selection?: McpSelection;
     input_status?: InputStatus;

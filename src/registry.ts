@@ -18,9 +18,17 @@ import type { RunRequest, LaunchPermissions } from "./guard.js";
 import type { Runtime } from "./types.js";
 import { LOCAL, requesterKey, type RequesterId } from "./requester.js";
 import type { Enforcement } from "./enforcement.js";
+export type StopGuardStatus = {
+  state: "unknown" | "passed" | "unresolved" | "failed";
+  continuation: "none" | "requested" | "exhausted" | "unavailable";
+  observed_at: string;
+  /** Hash of session/prompt identity; no transcript or reason text. */
+  turn?: string;
+};
 export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   /** Explicit profile-loading opt-in; absent on legacy records. */
   guards?: GuardSummary;
+  stop_guard_status?: StopGuardStatus;
   inherit_profile?: boolean;
   mcp_selection?: McpSelection;
   /** Last bounded observation; screen text is never stored. */

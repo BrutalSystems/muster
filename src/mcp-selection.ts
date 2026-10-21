@@ -25,6 +25,7 @@ export function mcpSelection(req: {
 /** Fail closed on runtimes predating the verified connector controls. */
 export async function assertRestrictedClaudeVersion(
   env: NodeJS.ProcessEnv,
+  minimumPatch = 305,
 ): Promise<void> {
   let version: string;
   try {
@@ -44,7 +45,8 @@ export async function assertRestrictedClaudeVersion(
   if (
     !parts ||
     parts[0]! < 2 ||
-    (parts[0] === 2 && (parts[1]! < 1 || (parts[1] === 1 && parts[2]! < 305)))
+    (parts[0] === 2 &&
+      (parts[1]! < 1 || (parts[1] === 1 && parts[2]! < minimumPatch)))
   )
     throw new Error("restrict-mcp requires Claude Code 2.1.305 or later");
 }

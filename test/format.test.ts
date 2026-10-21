@@ -219,3 +219,25 @@ test("a retitle reads as one line naming the run and its new title", () => {
     "Titled s1: now deploying.\n",
   );
 });
+
+test("human output retains Stop failure and exhausted continuation", () => {
+  const result = formatHuman({
+    kind: "task",
+    runtime: "claude",
+    state: "exited",
+    stop_guard_status: {
+      state: "failed",
+      continuation: "exhausted",
+      observed_at: "2026-01-01T00:00:00Z",
+    },
+  });
+  expect(result).toContain(
+    "Stop guard: failed; continuation exhausted (2026-01-01T00:00:00Z)",
+  );
+  expect(
+    formatHuman({
+      kind: "session",
+      stop_guard_status: { state: "unknown", continuation: "none" },
+    }),
+  ).toContain("Stop guard: unknown; continuation none");
+});
