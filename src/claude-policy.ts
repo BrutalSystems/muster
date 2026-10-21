@@ -6,13 +6,17 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { PreparedMcp } from "./mcp.js";
 
-export function claudeMcpConfig(servers: PreparedMcp[], bridgePath?: string) {
+export function claudeMcpConfig(
+  servers: PreparedMcp[],
+  bridgePath?: string,
+  namespace?: string,
+) {
   if (servers.length && !bridgePath)
     throw new Error("Missing MCP bridge configuration");
   return {
     mcpServers: Object.fromEntries(
       servers.map(({ name, config }) => [
-        name,
+        namespace ? `${namespace}_${name}` : name,
         {
           type: "stdio",
           command: process.execPath,

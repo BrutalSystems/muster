@@ -119,19 +119,29 @@ import { pollInterval, reapLog } from "./reap.js";
 import { selectPlugins } from "./plugins.js";
 import { prepareOnExit, runOnExitCommand } from "./on-exit.js";
 import type { OnExitResult } from "./registry.js";
+/** Reservation-owned facts, including absence on legacy records. */
+function launchFacts(entry: Entry) {
+  return {
+    ...annotationView(entry),
+    ...(entry.inherit_profile !== undefined
+      ? { inherit_profile: entry.inherit_profile }
+      : {}),
+  };
+}
 /** Runtime/peer refresh data cannot supply or replace reservation facts. */
 function sessionPeerView(entry: Entry): Record<string, unknown> {
   const {
+    inherit_profile: _inheritProfile,
     metadata: _metadata,
     provenance: _provenance,
     ...peer
   } = entry.peer ?? {};
-  return { ...peer, ...annotationView(entry) };
+  return { ...peer, ...launchFacts(entry) };
 }
 function taskHandle(entry: Entry, pid: number): TaskHandle {
   return {
     kind: "task",
-    ...annotationView(entry),
+    ...launchFacts(entry),
     permissions: entry.permissions!,
     sandbox: entry.sandbox!,
     mcp: entry.mcp ?? [],
@@ -680,6 +690,7 @@ export class Muster {
         kind: req.kind,
         cwd: req.cwd,
         ...launchAnnotations(req.options),
+        inherit_profile: req.options.includes("inherit-profile"),
         ...permissions,
         enforcement,
         model: model?.model ?? null,
@@ -917,7 +928,8 @@ export class Muster {
         req.cwd,
         deadline,
         prepared.servers,
-        req.kind === "task",
+        req.kind === "task" && !req.options.includes("inherit-profile"),
+        req.options.includes("inherit-profile"),
       );
       argv.splice(1, 0, ...codexPolicy);
     } else if (req.runtime === "opencode" && req.kind === "session") {
@@ -1284,7 +1296,7 @@ export class Muster {
           );
           const peer = {
             kind: "session",
-            ...annotationView(entry),
+            ...launchFacts(entry),
             ...permissions,
             enforcement,
             ...prepared.summary,
@@ -1947,7 +1959,7 @@ export class Muster {
       const exit = await readExit(e.exitPath);
       return {
         kind: "task",
-        ...annotationView(e),
+        ...launchFacts(e),
         ...(e.mcp ? { mcp: e.mcp } : {}),
         ...(e.mcp_warnings ? { mcp_warnings: e.mcp_warnings } : {}),
         ...(e.permissions

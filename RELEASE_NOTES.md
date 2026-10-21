@@ -10,6 +10,13 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- Claude and Codex can opt into profile-preserving full access with
+  `--unrestricted --options inherit-profile`, gated by `allow_dangerous_flags`.
+  The explicit choice is immutable and visible in run/list/wait records.
+  Existing unrestricted launches and workspace auto-trust checks are unchanged.
+
 ## 3.5.0 — 2026-10-21
 
 - `run --options` accepts `metadata=JSON` and `provenance=JSON` for caller-supplied

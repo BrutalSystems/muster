@@ -1,6 +1,7 @@
 import type { LaunchAnnotations } from "./annotations.js";
 // Human formatting is CLI-only; runtime records and MCP responses stay unchanged.
 type RecordView = LaunchAnnotations & {
+  inherit_profile?: boolean;
   mcp?: string[];
   mcp_warnings?: string[];
   permissions?: string;
@@ -114,6 +115,8 @@ function recordHuman(record: RecordView, color: boolean): string {
       lines.push(field("Permissions", clean(record.permissions)));
     if (record.sandbox) lines.push(field("Sandbox", clean(record.sandbox)));
   }
+  if (record.inherit_profile)
+    lines.push(field("Profile", "inherited (full access)"));
   // Only when known: a null means the child chose its own model, and "-" in a
   // human listing would read as a value rather than an absence. The source is
   // shown because "pinned by the caller" and "fell back to the configured

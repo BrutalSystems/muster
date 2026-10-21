@@ -155,3 +155,45 @@ remote requesters cannot supply `options`; the local CLI and launch-enabled
 local MCP server can. These options never forward data into runtime arguments
 or prompts. They are visible in records, output and launch logs: do not put
 credentials, tokens or other secrets in them.
+
+## Full access with the profile intact
+
+Claude and Codex accept an explicit profile-loading opt-in:
+
+```sh
+muster run claude --unrestricted --options inherit-profile \
+  --options auto-approve-path --options accept-bypass-warning --prompt 'Review this project'
+muster run codex --kind task --unrestricted --options inherit-profile --prompt 'Review this project'
+```
+
+This requires `allow_dangerous_flags = true` in Muster's configuration. It
+requests bypass permissions and no sandbox while retaining the runtime's
+normal profile configuration, instructions, hooks, plugins and MCP servers.
+Claude receives a small per-launch settings override rather than the sealed
+settings bundle. Codex tasks retain user configuration as sessions do, and
+neither kind receives Muster's hook/plugin/MCP disabling overrides in this mode.
+Existing calls without the option retain their behavior. OpenCode and restricted
+permission modes refuse the option. Remote callers cannot supply launch options.
+
+`inherit_profile` is recorded at reservation and cannot be changed through
+Muster. It appears in `run`, `list` and `wait`, including ended launches; legacy
+records omit it. Changing the option with the same request key is refused.
+The field records the explicit opt-in, not whether every profile component
+successfully loaded. A normal Claude launch still inherits its profile without
+this option.
+
+Profile MCP servers remain enabled. Explicit `--mcp` selections add Muster
+servers; `--mcp none` selects no Muster servers without removing profile servers.
+Muster's configured `default_mcp` is not added in this mode. Codex name collisions
+use a separate Muster server name to avoid merging credentials or policy. Claude
+uses a per-launch `muster_<launch-id>_<server>` namespace for explicitly selected
+servers in this mode, keeping their names separate from profile definitions.
+
+`auto-approve-path` still refuses a workspace carrying hooks or MCP configuration;
+trust that workspace yourself first. `accept-bypass-warning` remains Claude-only
+and explicit. Profile code runs with your account's privileges, and prompts are
+not an isolation boundary. Detected managed Claude policy refuses the launch,
+as it does for other explicit permission modes: Muster cannot prove its overrides
+win. Runtime checks, profile hooks and
+programs such as `sudo` can still block or refuse an operation. Muster does not
+promise that every interaction becomes unattended.

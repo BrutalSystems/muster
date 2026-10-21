@@ -17,6 +17,7 @@ import type { Runtime } from "./types.js";
  * one an agent has no answer for is an error rather than a silent no-op.
  */
 export const LAUNCH_OPTIONS = [
+  "inherit-profile",
   "auto-approve-path",
   "accept-bypass-warning",
 ] as const;
@@ -58,6 +59,15 @@ export function assertOptionsSupported(
   permissions: LaunchPermissions,
 ): void {
   for (const option of options) {
+    if (
+      option === "inherit-profile" &&
+      (runtime === "opencode" ||
+        permissions.permissions !== "bypass" ||
+        permissions.sandbox !== "full-access")
+    )
+      throw new Error(
+        "--options inherit-profile requires Claude or Codex with bypass permissions and full access (--unrestricted)",
+      );
     if (option === "auto-approve-path" && !AGENTS[runtime].trustWorkspace)
       throw new Error(
         `--options auto-approve-path is not supported for ${runtime}: it has no workspace-trust gate`,

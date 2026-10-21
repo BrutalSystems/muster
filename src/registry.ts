@@ -16,6 +16,8 @@ import type { Runtime } from "./types.js";
 import { LOCAL, requesterKey, type RequesterId } from "./requester.js";
 import type { Enforcement } from "./enforcement.js";
 export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
+  /** Explicit profile-loading opt-in; absent on legacy records. */
+  inherit_profile?: boolean;
   id: string;
   launchId: string;
   requestKey?: string;
@@ -353,6 +355,7 @@ export class Registry {
       Partial<LaunchPermissions> &
       Pick<
         Entry,
+        | "inherit_profile"
         | "metadata"
         | "provenance"
         | "enforcement"
@@ -488,7 +491,12 @@ export class Registry {
       const entry =
         byLaunch ?? currentEntry(entries.filter((e) => e.id === id));
       if (!entry) throw new Error(`Unknown launch ${id}`);
-      for (const key of ["requester", "metadata", "provenance"] as const)
+      for (const key of [
+        "requester",
+        "metadata",
+        "provenance",
+        "inherit_profile",
+      ] as const)
         if (key in patch)
           throw new Error(`${key} is recorded once and cannot be updated`);
       if (

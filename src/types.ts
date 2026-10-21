@@ -8,6 +8,7 @@ export type SessionPeer = LaunchPermissions &
   LaunchAnnotations &
   McpSummary & {
     kind: "session";
+    inherit_profile?: boolean;
     /**
      * How strongly the containment was actually imposed. Optional because
      * `list()` builds its records from registry entries rather than from this
@@ -57,6 +58,7 @@ export type TaskHandle = LaunchPermissions &
   LaunchAnnotations &
   McpSummary & {
     kind: "task";
+    inherit_profile?: boolean;
     enforcement?: Enforcement;
     /**
      * The resolved identity NAME, absent when the launch ran on the ambient
