@@ -1,7 +1,9 @@
+import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 // Human formatting is CLI-only; runtime records and MCP responses stay unchanged.
 type RecordView = LaunchAnnotations & {
   inherit_profile?: boolean;
+  input_status?: InputStatus;
   mcp?: string[];
   mcp_warnings?: string[];
   permissions?: string;
@@ -90,6 +92,17 @@ function recordHuman(record: RecordView, color: boolean): string {
     `${clean(record.runtime)} · ${clean(record.kind)} · ${paint(clean(record.state), stateColor)}`,
     field("ID", clean(id)),
   ];
+  if (record.input_status) {
+    const input = record.input_status;
+    lines.push(
+      field(
+        "Input",
+        input.state === "waiting"
+          ? `waiting: ${clean(input.reason)} (${clean(input.source)}, ${clean(input.observed_at)})`
+          : "unknown",
+      ),
+    );
+  }
   if (record.canonical_id)
     lines.push(field("Address", clean(record.canonical_id)));
   if (record.runtime === "opencode" && record.server_url)

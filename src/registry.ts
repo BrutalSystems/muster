@@ -1,3 +1,4 @@
+import { unknownInputStatus, type InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -18,6 +19,8 @@ import type { Enforcement } from "./enforcement.js";
 export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   /** Explicit profile-loading opt-in; absent on legacy records. */
   inherit_profile?: boolean;
+  /** Last bounded observation; screen text is never stored. */
+  input_status?: InputStatus;
   id: string;
   launchId: string;
   requestKey?: string;
@@ -199,6 +202,14 @@ export function currentEntry(entries: Entry[]): Entry | undefined {
     [...entries].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
   );
 }
+/** Lifecycle is checked under the registry lock, after observations were sampled. */
+function clearEndedInput(entry: Entry) {
+  if (
+    !["starting", "running"].includes(entry.status) &&
+    entry.input_status?.state === "waiting"
+  )
+    entry.input_status = unknownInputStatus();
+}
 export class Registry {
   /** `lockWait` is how long to wait for a live holder; tests shorten it. */
   constructor(
@@ -294,6 +305,7 @@ export class Registry {
               ? "stopped"
               : "exited";
         }
+        clearEndedInput(entry);
       }
       const result = await fn(entries);
       const path = join(this.home, `registry.${randomUUID()}.tmp`);
@@ -511,6 +523,7 @@ export class Registry {
       )
         throw new Error("Durable identity already registered");
       Object.assign(entry, patch);
+      clearEndedInput(entry);
       return structuredClone(entry);
     });
   }

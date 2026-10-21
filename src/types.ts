@@ -1,3 +1,4 @@
+import type { InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 import type { HostCapabilities, HostId, TerminalApp } from "./hosts/types.js";
 import type { Enforcement } from "./enforcement.js";
@@ -9,6 +10,7 @@ export type SessionPeer = LaunchPermissions &
   McpSummary & {
     kind: "session";
     inherit_profile?: boolean;
+    input_status?: InputStatus;
     /**
      * How strongly the containment was actually imposed. Optional because
      * `list()` builds its records from registry entries rather than from this
@@ -59,6 +61,7 @@ export type TaskHandle = LaunchPermissions &
   McpSummary & {
     kind: "task";
     inherit_profile?: boolean;
+    input_status?: InputStatus;
     enforcement?: Enforcement;
     /**
      * The resolved identity NAME, absent when the launch ran on the ambient

@@ -283,7 +283,19 @@ test("CLI human run/list/stop works while JSON stays the default", async () => {
     const explicit = JSON.parse(
       (await invoke("list", "--format", "json")).stdout,
     );
-    expect(explicit).toEqual(standard);
+    // Each read samples input evidence again; only its observation time varies.
+    expect(explicit).toEqual(
+      standard.map((record: any) => ({
+        ...record,
+        input_status: {
+          ...record.input_status,
+          observed_at: expect.any(String),
+        },
+      })),
+    );
+    expect(
+      Date.parse(explicit[0].input_status.observed_at),
+    ).toBeGreaterThanOrEqual(Date.parse(standard[0].input_status.observed_at));
     expect(standard[0].id).toBe(id);
     const human = await invoke("list", "--kind", "task", "--format", "human");
     expect(human.stdout).toContain(`ID: ${id}`);

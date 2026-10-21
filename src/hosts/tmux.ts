@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { classifyScreen, unknownInputStatus } from "../input-status.js";
+import type { Runtime } from "../types.js";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -195,6 +199,33 @@ export class TmuxHost implements TerminalHost {
       ["-L", this.server, "-f", "/dev/null", ...args],
       Math.max(1, Math.min(5000, deadline - Date.now())),
     );
+  }
+  async inputStatus(hostRef: string, runtime: Runtime, deadline: number) {
+    if (!/^@\d+$/.test(hostRef) || Date.now() >= deadline)
+      return unknownInputStatus();
+    try {
+      const { stdout } = await promisify(execFile)(
+        "tmux",
+        [
+          "-L",
+          this.server,
+          "-f",
+          "/dev/null",
+          "capture-pane",
+          "-p",
+          "-t",
+          hostRef,
+        ],
+        {
+          timeout: Math.max(1, Math.min(500, deadline - Date.now())),
+          maxBuffer: 64 * 1024,
+        },
+      );
+      return classifyScreen(runtime, stdout);
+    } catch {
+      // Do not expose stderr or captured text: either can contain credentials.
+      return unknownInputStatus();
+    }
   }
   async available() {
     try {

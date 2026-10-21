@@ -36,12 +36,12 @@ if(argv.includes('app-server')){
   const m=JSON.parse(line);let result,error;
   const threads=live();
   if(m.method==='initialize'){experimental=m.params.capabilities?.experimentalApi===true;result={userAgent:'fake'};}
-  else if(m.method==='thread/list')result={data:threads.filter(t=>Date.now()>=t.readyAt).map(t=>({...t,status:'idle',canAcceptDirectInput:true})),nextCursor:null};
+  else if(m.method==='thread/list')result={data:threads.filter(t=>Date.now()>=t.readyAt).map(t=>({...t,status:t.fixtureStatus??'idle',canAcceptDirectInput:true})),nextCursor:null};
   else if(m.method==='thread/read'){
    const t=threads.find(t=>t.id===m.params.threadId);
    if(t?.ephemeral&&process.env.MUSTER_FAKE_REVIEWER==='unloaded')error={code:-32600,message:'thread not loaded: '+t.id};
    else if(!t||Date.now()<t.readyAt)error={code:-32600,message:'no rollout found for thread id '+m.params.threadId};
-   else result={thread:{...t,status:{type:'idle'},canAcceptDirectInput:t.canAcceptDirectInput??true}};
+   else result={thread:{...t,status:t.fixtureStatus??{type:'idle'},canAcceptDirectInput:t.canAcceptDirectInput??true}};
   }else if(m.method==='thread/queue/add'){
    if(!experimental)error={code:-32600,message:'requires experimentalApi'};
    else {const t=threads.find(t=>t.id===m.params.threadId);if(!t)error={code:-32600,message:'no thread'};
@@ -65,6 +65,12 @@ if(argv.includes('app-server')){
   const resumed=argv.indexOf('--resume');
   const id=resumed>=0&&!argv.includes('--fork-session')&&process.env.MUSTER_FAKE_IGNORE_RESUME!=='1'?argv[resumed+1]:randomUUID(),prompt=argv[argv.length-1],isTask=argv.includes('exec')||argv.includes('-p');
   const state={id,pid:process.pid,name:prompt,cwd:process.cwd(),source:isTask?'exec':'cli',readyAt:Date.now()+Number(process.env.MUSTER_FAKE_READY_MS||0)};
+  if(process.env.MUSTER_FAKE_THREAD_STATUS)state.fixtureStatus=JSON.parse(process.env.MUSTER_FAKE_THREAD_STATUS);
+  if(process.env.MUSTER_FAKE_SCREEN_FILE){
+    let previous;
+    const draw=()=>{const text=fs.readFileSync(process.env.MUSTER_FAKE_SCREEN_FILE,'utf8');if(text!==previous){process.stdout.write('\x1b[2J\x1b[H'+text);previous=text;}};
+    draw();setInterval(draw,50);
+  }
   if(process.env.MUSTER_FAKE_SOURCE)state.source=process.env.MUSTER_FAKE_SOURCE;
   // `env` is recorded so a test can assert what the agent was actually spawned
   // with — the identity variables are only observable from the child's side.

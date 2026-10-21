@@ -197,3 +197,53 @@ as it does for other explicit permission modes: Muster cannot prove its override
 win. Runtime checks, profile hooks and
 programs such as `sudo` can still block or refuse an operation. Muster does not
 promise that every interaction becomes unattended.
+
+## Waiting for input
+
+Session results from `run`, `list` and `wait` include an additive `input_status`
+observation. The existing activity/lifecycle `state` is unchanged:
+
+```json
+{
+  "state": "busy",
+  "input_status": {
+    "state": "waiting",
+    "reason": "permission",
+    "source": "codex-status",
+    "observed_at": "2026-01-01T12:00:00.000Z"
+  }
+}
+```
+
+A positive observation has `state: "waiting"`, a reason and evidence source.
+Otherwise all runtimes return `state: "unknown"`, `reason: "unknown"` and
+`source: "none"`. Unknown means there is no current recognized evidence; it
+never means the agent is definitely unblocked. Idleness alone is not evidence.
+`observed_at` is the time Muster sampled the evidence, not when the dialog began.
+
+Current native evidence is Codex's active approval/user-input flags and
+OpenCode's pending permission/question requests, filtered to the launched
+session. Muster reads current snapshots rather than replaying possibly stale
+notifications between CLI invocations. Claude's current session registry provides
+activity but no equivalent input-wait signal.
+
+For tmux sessions, Muster also inspects the visible pane (no scrollback), bounded
+to 64 KiB and 500 ms, and classifies only its last 16 non-trailing-blank lines
+within an 8,192-character tail. Recognized reasons include trust, bypass-warning, permission,
+MCP approval, plan approval, login, password and SSH host-key confirmation. Screen
+matches are best-effort heuristics: changed/localized dialogs and arbitrary
+programs can be missed, and displayed examples can resemble a dialog. Native
+positive evidence takes precedence. Screen text is never saved in records, logs
+or responses; only the reason, source and observation time are retained.
+
+`list` and `wait` resample evidence. An observation can clear to unknown on the
+next read; old evidence is not treated as a current wait after the process ends
+or the evidence source becomes unavailable. Starting sessions can be inspected
+once a live launch root and tmux pane are recorded. PTY hosts without native
+signals, tasks and ended records report unknown; their output files are not
+scanned for old prompts. Muster never answers dialogs or sends passwords.
+
+Readiness still uses the top-level `launch_timeout_sec` configuration (default
+30, positive values up to 600). This is a launch budget, not a timeout for dialogs
+in an already running session. Long-running MCP servers need a restart after a
+configuration change.

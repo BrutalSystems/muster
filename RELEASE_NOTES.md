@@ -17,6 +17,11 @@ as patches, so do not read an old entry under the new rule.
   The explicit choice is immutable and visible in run/list/wait records.
   Existing unrestricted launches and workspace auto-trust checks are unchanged.
 
+- `run`, `list` and `wait` add `input_status` observations for sessions waiting
+  on known dialogs. Codex/OpenCode native evidence takes precedence over bounded
+  visible tmux-screen inspection. Missing or stale evidence is `unknown`; activity
+  state is unchanged, screen text is not recorded, and nothing is auto-answered.
+
 ## 3.5.0 — 2026-10-21
 
 - `run --options` accepts `metadata=JSON` and `provenance=JSON` for caller-supplied

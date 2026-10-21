@@ -1,3 +1,4 @@
+import type { InputStatus } from "../input-status.js";
 import { CodexRpc } from "../codex-rpc.js";
 import { OpenCodeHttp } from "../opencode-http.js";
 import { codexReachable } from "../reach/codex.js";
@@ -12,6 +13,7 @@ import type { Entry } from "../registry.js";
 export type SessionMetadata = {
   rawName: string | null;
   state: "idle" | "busy";
+  input_status?: InputStatus;
 };
 
 /**

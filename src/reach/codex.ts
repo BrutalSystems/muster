@@ -1,3 +1,4 @@
+import { codexInputStatus } from "../input-status.js";
 import { CodexRpc } from "../codex-rpc.js";
 /** Why a thread cannot serve as a messageable session identity, or null if it
  * can. One source of truth: the launch loop screens candidate writer locks with
@@ -51,5 +52,10 @@ export async function codexReachable(
     status?.type === "notLoaded"
       ? "idle"
       : "busy";
-  return { rawName, state: state as "idle" | "busy" };
+  const input = codexInputStatus(thread.status);
+  return {
+    rawName,
+    state: state as "idle" | "busy",
+    ...(input ? { input_status: input } : {}),
+  };
 }

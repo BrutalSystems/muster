@@ -1,3 +1,4 @@
+import type { InputStatus } from "./input-status.js";
 import net from "node:net";
 import { z, type ZodType } from "zod";
 
@@ -203,6 +204,32 @@ export class OpenCodeHttp {
     );
   }
 
+  /** Pending-request snapshots avoid missing an event between CLI invocations.
+   * Only identifiers are retained; prompts, commands and credentials are dropped. */
+  async inputStatus(
+    id: string,
+    deadline: number,
+  ): Promise<InputStatus | undefined> {
+    const schema = z.array(z.object({ id: z.string(), sessionID: z.string() }));
+    const results = await Promise.allSettled([
+      this.requestJson("GET", "/permission", deadline, schema, 64 * 1024),
+      this.requestJson("GET", "/question", deadline, schema, 64 * 1024),
+    ]);
+    for (const [i, result] of results.entries()) {
+      if (
+        result.status === "fulfilled" &&
+        result.value.some((r) => r.sessionID === id)
+      )
+        return {
+          state: "waiting",
+          reason: i === 0 ? "permission" : "question",
+          source: i === 0 ? "opencode-permission" : "opencode-question",
+          observed_at: new Date().toISOString(),
+        };
+    }
+    return undefined;
+  }
+
   abort(id: string, deadline: number): Promise<boolean> {
     return this.requestJson(
       "POST",
@@ -327,6 +354,7 @@ export class OpenCodeHttp {
     path: string,
     deadline: number,
     schema: ZodType<T>,
+    maxBytes?: number,
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(
@@ -357,7 +385,17 @@ export class OpenCodeHttp {
 
       let value: unknown;
       try {
-        value = await response.json();
+        if (maxBytes !== undefined && response.body) {
+          const chunks: Uint8Array[] = [];
+          let size = 0;
+          for await (const chunk of response.body) {
+            size += chunk.byteLength;
+            if (size > maxBytes)
+              throw new Error("response exceeds observation limit");
+            chunks.push(chunk);
+          }
+          value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        } else value = await response.json();
       } catch {
         throw protocolError(
           `${method} ${path} returned invalid JSON`,

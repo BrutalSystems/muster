@@ -83,7 +83,7 @@ export const COMMANDS: Command[] = [
       ],
       [
         "--unrestricted",
-        "no sandbox and no permission checks; needs allow_dangerous_flags in config.toml",
+        "no sandbox and bypass permissions; needs allow_dangerous_flags in config.toml",
       ],
       [
         "--level LEVEL",
