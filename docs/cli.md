@@ -172,6 +172,9 @@ normal profile configuration, instructions, hooks, plugins and MCP servers.
 Claude receives a small per-launch settings override rather than the sealed
 settings bundle. Codex tasks retain user configuration as sessions do, and
 neither kind receives Muster's hook/plugin/MCP disabling overrides in this mode.
+Codex sessions use `--no-daemon` to keep thread ownership inside the launched
+process tree; this mode requires a Codex CLI supporting that flag (verified with
+0.163.0). It does not attach the session to a shared background server.
 Existing calls without the option retain their behavior. OpenCode and restricted
 permission modes refuse the option. Remote callers cannot supply launch options.
 

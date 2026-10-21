@@ -253,3 +253,16 @@ test("legacy records cannot acquire a profile choice from peer data", async () =
     await m.close();
   }
 });
+
+test("inherited Codex sessions keep a dedicated process instead of the shared daemon", () => {
+  const session = launchArgs(request({ runtime: "codex" }), dangerous);
+  expect(session).toContain("--no-daemon");
+  const task = launchArgs(
+    request({ runtime: "codex", kind: "task" }),
+    dangerous,
+  );
+  expect(task).not.toContain("--no-daemon");
+  expect(
+    launchArgs(request({ runtime: "codex", options: [] }), dangerous),
+  ).not.toContain("--no-daemon");
+});

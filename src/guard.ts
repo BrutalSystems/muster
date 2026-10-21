@@ -946,6 +946,9 @@ export function launchArgs(
   if (req.runtime === "codex")
     return [
       "codex",
+      // A shared daemon owns threads outside the launch's process tree.
+      // Keep inherited-profile sessions local so identity and stop remain scoped.
+      ...(inheritProfile && req.kind === "session" ? ["--no-daemon"] : []),
       ...(req.kind === "task"
         ? [
             "exec",
