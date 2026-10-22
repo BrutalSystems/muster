@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.14.0 — 2026-10-22
 
 - `run`, `list` and `wait` now report `launch_options`: the named options a
   launch asked for (`inherit-profile`, `restrict-mcp`, `auto-approve-path`,

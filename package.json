@@ -1,6 +1,6 @@
 {
   "name": "@brutalsystems/muster",
-  "version": "3.13.0",
+  "version": "3.14.0",
   "description": "Launch instructed, reachable local agent sessions",
   "type": "module",
   "engines": {
