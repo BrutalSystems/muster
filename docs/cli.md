@@ -78,6 +78,44 @@ Muster refuses, before anything is reserved:
   being allowed to launch is not being allowed to read every conversation in
   the profile.
 
+## Running a specific runtime binary
+
+`--executable /abs/path` (`executable` through MCP) runs that binary instead of
+the `codex`, `claude` or `opencode` found on PATH. Use it to pin a tested
+version while your own install keeps updating, to compare two versions side by
+side, or when a version manager decides PATH for you: under an asdf or mise
+shim, the Node install's `bin` folder is put ahead of the caller's PATH before
+Muster starts, so changing PATH cannot choose the runtime.
+
+```sh
+muster run codex --read-only --executable /opt/codex/0.150.0/bin/codex --prompt 'Review this project'
+```
+
+Before anything is reserved, Muster refuses a path that is not absolute, not an
+executable file, or whose `--version` output is not that runtime's
+(`codex-cli X`, `X (Claude Code)`, a bare version for OpenCode). That catches
+the wrong binary, not a hostile one; the sealed levels are only as good as the
+binary's own sandbox, so a pinned old version brings that version's behaviour.
+A version too old for a flag Muster passes fails the launch.
+
+Every program Muster runs for the launch is that binary: the launch itself, the
+Codex MCP policy probe, the Codex app-server that finds the session's thread
+(and later refreshes it for `list` and `wait`), the Claude version check behind
+`restrict-mcp` and guards, and OpenCode's config and version checks. A Codex
+session is also given `--no-daemon` when the binary supports it, because a
+shared daemon started by another Codex runs that Codex's version.
+`CODEX_MANAGED_*` variables are never passed to a launch: they describe the
+package of whichever Codex set them, not the one being run.
+
+The path and the version it reported are recorded once as
+`executable: {path, version}` and returned by `run`, `list` and `wait`. A
+`--resume` does not inherit it; name it again. A request key reused with a
+different executable is refused. A remote requester cannot name one.
+
+To run the Codex native binary directly rather than through the npm package's
+`codex.js`, keep its whole `vendor/<target>/` folder together: `bin/codex`
+reads `codex-package.json` beside it and finds `codex-path/rg` from there.
+
 ## Provider and model configuration
 
 OpenCode inherits the provider and model definitions from its normal user and

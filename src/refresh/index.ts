@@ -1,6 +1,7 @@
 import { resolveCodex } from "../identity/codex.js";
 import type { InputStatus } from "../input-status.js";
 import { CodexRpc } from "../codex-rpc.js";
+import { runtimeCommand } from "../executable.js";
 import { OpenCodeHttp } from "../opencode-http.js";
 import { codexReachable } from "../reach/codex.js";
 import { openCodeReachable } from "../reach/opencode.js";
@@ -47,7 +48,11 @@ export async function refreshCodex(
   env: NodeJS.ProcessEnv,
   deadline: number,
 ): Promise<SessionMetadata> {
-  const rpc = new CodexRpc(env, entry.cwd);
+  const rpc = new CodexRpc(
+    env,
+    entry.cwd,
+    runtimeCommand("codex", entry.executable?.path),
+  );
   try {
     // Old CLI threads remain readable after /new. Exclude only positively
     // identified non-foreground helpers; an unreadable/blank thread stays a

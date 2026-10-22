@@ -151,6 +151,32 @@ test("a remote request may not select MCP servers or plugins", async () => {
   }
 });
 
+test("a remote request may not name an executable", async () => {
+  // A path names a program on the receiving machine; choosing it remotely
+  // would be choosing what that machine runs.
+  const { f, m } = await muster(enrolled());
+  try {
+    const error = await m
+      .run(
+        {
+          runtime: "codex",
+          prompt: "hello",
+          cwd: f.root,
+          executable: join(f.bin, "codex"),
+        },
+        remote,
+      )
+      .catch((e) => e as RequesterPolicyRefusal);
+    expect(error).toBeInstanceOf(RequesterPolicyRefusal);
+    expect((error as RequesterPolicyRefusal).ceiling).toBe(
+      "not-expressible-remotely",
+    );
+    expect(await m.registry.all()).toHaveLength(0);
+  } finally {
+    await m.close();
+  }
+});
+
 test("a level above the profile's ceiling is refused", async () => {
   const { f, m } = await muster(enrolled());
   try {

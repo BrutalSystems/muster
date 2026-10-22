@@ -39,6 +39,8 @@ export async function codexPolicyArgs(
    */
   ignoreUserConfig = false,
   inheritProfile = false,
+  /** The Codex to ask: the one the launch will run. See src/executable.ts. */
+  command = "codex",
 ): Promise<string[]> {
   const args: string[] = inheritProfile
     ? []
@@ -59,7 +61,7 @@ export async function codexPolicyArgs(
   async function list(extra: string[]) {
     try {
       const { stdout } = await exec(
-        "codex",
+        command,
         [...extra, "mcp", "list", "--json"],
         {
           env,

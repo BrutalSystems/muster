@@ -112,6 +112,10 @@ export const COMMANDS: Command[] = [
         "with --resume: continue it under a new session id, leaving the original untouched",
       ],
       [
+        "--executable PATH",
+        "run the runtime at this absolute path instead of the one on PATH; checked with --version and recorded with its version",
+      ],
+      [
         "--idle-timeout DURATION",
         "stop a tmux session after this much inactivity (off by default)",
       ],

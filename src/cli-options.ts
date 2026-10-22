@@ -28,6 +28,7 @@ export const CLI_OPTIONS = {
   plugin: { type: "string", multiple: true },
   model: { type: "string" },
   resume: { type: "string" },
+  executable: { type: "string" },
   "fork-session": { type: "boolean" },
   "idle-timeout": { type: "string" },
   ttl: { type: "string" },

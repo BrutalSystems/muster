@@ -38,6 +38,7 @@ export const METADATA_RECORD_KEEP = [
   "mcp_warnings",
   "plugins",
   "launch_options",
+  "executable",
 ] as const;
 /**
  * What an `error` becomes in metadata mode. An error is free text, and some of

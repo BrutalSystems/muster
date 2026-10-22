@@ -18,6 +18,7 @@ type RecordView = LaunchAnnotations & {
     StopGuardStatus | { state: "unknown"; continuation: "none" };
   inherit_profile?: boolean;
   launch_options?: string[];
+  executable?: { path: string; version: string };
   mcp_selection?: McpSelection;
   input_status?: InputStatus;
   mcp?: string[];
@@ -182,6 +183,13 @@ function recordHuman(record: RecordView, color: boolean): string {
     lines.push(field("Profile", "inherited (full access)"));
   if (record.launch_options?.length)
     lines.push(field("Options", record.launch_options.map(clean).join(", ")));
+  if (record.executable)
+    lines.push(
+      field(
+        "Executable",
+        `${clean(record.executable.path)} (${clean(record.executable.version)})`,
+      ),
+    );
   if (record.mcp_selection)
     lines.push(
       field(

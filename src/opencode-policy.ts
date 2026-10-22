@@ -10,6 +10,7 @@ import {
 import type { PreparedMcp } from "./mcp.js";
 import type { SelectedPlugin } from "./plugins.js";
 import { openCodeProviders } from "./providers.js";
+import { runtimeCommand } from "./executable.js";
 
 const exec = promisify(execFile);
 const DEBUG_CONFIG_ERROR = "Cannot verify effective OpenCode MCP configuration";
@@ -43,9 +44,10 @@ async function resolvedConfig(
   cwd: string,
   deadline: number,
   errorMessage = DEBUG_CONFIG_ERROR,
+  command = "opencode",
 ): Promise<JsonRecord> {
   try {
-    const { stdout } = await exec("opencode", ["--pure", "debug", "config"], {
+    const { stdout } = await exec(command, ["--pure", "debug", "config"], {
       env,
       cwd,
       timeout: commandTimeout(deadline),
@@ -378,6 +380,7 @@ async function verifyOverlay(
   env: Record<string, string>,
   cwd: string,
   deadline: number,
+  command: string,
 ) {
   const patch = envPatch(selected, overlay, env);
   const effectiveConfig = await resolvedConfig(
@@ -385,6 +388,7 @@ async function verifyOverlay(
     cwd,
     deadline,
     ISOLATION_ERROR,
+    command,
   );
   const actualMcp = isRecord(effectiveConfig.mcp) ? effectiveConfig.mcp : {};
   const actualTools = isRecord(effectiveConfig.tools)
@@ -446,8 +450,15 @@ export async function openCodeMcpNames(
   env: Record<string, string>,
   cwd: string,
   deadline: number,
+  command = "opencode",
 ): Promise<string[]> {
-  const config = await resolvedConfig(env, cwd, deadline);
+  const config = await resolvedConfig(
+    env,
+    cwd,
+    deadline,
+    DEBUG_CONFIG_ERROR,
+    command,
+  );
   if (config.mcp === undefined) return [];
   if (!isRecord(config.mcp)) throw new Error(DEBUG_CONFIG_ERROR);
   return Object.keys(config.mcp);
@@ -485,10 +496,11 @@ export async function openCodeSessionLaunch(
     env,
     cwd,
     deadline,
+    runtimeCommand("opencode", req.executable),
   );
   return {
     argv: [
-      "opencode",
+      runtimeCommand("opencode", req.executable),
       ...(plugins.length === 0 ? ["--pure"] : []),
       "--hostname",
       "127.0.0.1",
@@ -533,10 +545,11 @@ export async function openCodeTaskLaunch(
     env,
     cwd,
     deadline,
+    runtimeCommand("opencode", req.executable),
   );
   return {
     argv: [
-      "opencode",
+      runtimeCommand("opencode", req.executable),
       "run",
       "--format",
       "json",
@@ -582,6 +595,7 @@ export async function assertOpenCodeVersion(
   env: Record<string, string>,
   minimum: string,
   deadline: number,
+  command = "opencode",
 ): Promise<void> {
   const required = parseVersion(minimum);
   if (!required)
@@ -590,7 +604,7 @@ export async function assertOpenCodeVersion(
   try {
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw new Error("deadline");
-    const { stdout } = await exec("opencode", ["--version"], {
+    const { stdout } = await exec(command, ["--version"], {
       env,
       timeout: Math.min(4000, remaining),
       maxBuffer: 64 * 1024,

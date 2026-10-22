@@ -3,6 +3,7 @@ import type { McpSelection } from "./mcp-selection.js";
 import { unknownInputStatus, type InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
 import type { LaunchOption } from "./options.js";
+import type { LaunchExecutable } from "./executable.js";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -40,6 +41,11 @@ export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   inherit_profile?: boolean;
   /** Named options the launch consented to; absent on legacy records. */
   launch_options?: LaunchOption[];
+  /**
+   * The runtime binary the caller named, and the version it reported when
+   * checked. Absent when the launch ran the runtime found on PATH.
+   */
+  executable?: LaunchExecutable;
   mcp_selection?: McpSelection;
   /** Last bounded observation; screen text is never stored. */
   input_status?: InputStatus;
@@ -410,6 +416,7 @@ export class Registry {
         | "guards"
         | "inherit_profile"
         | "launch_options"
+        | "executable"
         | "mcp_selection"
         | "metadata"
         | "provenance"
@@ -665,6 +672,7 @@ export class Registry {
         "startingDisplay",
         "inherit_profile",
         "launch_options",
+        "executable",
         "mcp_selection",
       ] as const)
         if (key in patch)
