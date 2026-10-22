@@ -10,6 +10,32 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `run --executable /abs/path` (`executable` through MCP) runs that runtime
+  binary instead of the `codex`, `claude` or `opencode` found on PATH: to pin a
+  tested version while your own install keeps updating, to compare versions
+  side by side, or when a version manager decides PATH for you. Under an asdf
+  or mise shim the Node install's `bin` folder is put ahead of the caller's
+  PATH before Muster starts, so changing PATH could not choose the runtime.
+- Before anything is reserved, the path must be absolute and an executable
+  file, and its `--version` output must be that runtime's. That catches the
+  wrong binary, not a hostile one. A remote requester cannot name one.
+- Every program Muster runs for the launch uses it: the launch, the Codex MCP
+  policy probe, the Codex app-server that finds the session's thread and later
+  refreshes it for `list` and `wait`, the Claude version check behind
+  `restrict-mcp` and guards, and OpenCode's config and version checks. A Codex
+  session also gets `--no-daemon` when the binary supports it, so it does not
+  join a shared daemon running another version.
+- The path and the version it reported are recorded once as
+  `executable: {path, version}` and returned by `run`, `list` and `wait`;
+  launches without it omit the field. Human output adds an `Executable:` line.
+  A `--resume` does not inherit it, and a request key reused with a different
+  executable is refused.
+- `CODEX_MANAGED_*` variables are no longer passed to any launch. The npm
+  `codex.js` sets them to describe its own package; a native binary run
+  directly would otherwise inherit a description of some other install.
+
 ## 3.14.0 — 2026-10-22
 
 - `run`, `list` and `wait` now report `launch_options`: the named options a

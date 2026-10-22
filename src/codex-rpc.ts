@@ -18,14 +18,25 @@ export class CodexRpc {
   constructor(
     private env: NodeJS.ProcessEnv,
     private cwd = process.cwd(),
+    /** The Codex the session runs, so its own app-server reads its threads. */
+    private command = "codex",
     private policy?: string[],
   ) {}
   private async start(deadline: number) {
     if (this.child) return;
     const policy =
-      this.policy ?? (await codexPolicyArgs(this.env, this.cwd, deadline));
+      this.policy ??
+      (await codexPolicyArgs(
+        this.env,
+        this.cwd,
+        deadline,
+        [],
+        false,
+        false,
+        this.command,
+      ));
     const child = spawn(
-      "codex",
+      this.command,
       [...policy, "app-server", "--listen", "stdio://"],
       {
         env: this.env,

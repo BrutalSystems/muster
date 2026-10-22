@@ -134,6 +134,12 @@ export const MCP_TOOLS = [
           description:
             "With resume: continue the conversation under a new session id, leaving the original as it was. Allowed while the original is running.",
         },
+        executable: {
+          type: "string",
+          minLength: 1,
+          description:
+            "Absolute path of the runtime binary to run instead of the one found on PATH, to pin a version. Must be an executable file whose --version output is this runtime's; every probe Muster makes of the runtime uses it too. Recorded with the version it reported and returned by run, list and wait. A resume does not inherit it. Not expressible remotely.",
+        },
         idleTimeout: {
           type: "string",
           description:

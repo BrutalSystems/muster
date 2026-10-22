@@ -26,10 +26,11 @@ export function mcpSelection(req: {
 export async function assertRestrictedClaudeVersion(
   env: NodeJS.ProcessEnv,
   minimumPatch = 305,
+  command = "claude",
 ): Promise<void> {
   let version: string;
   try {
-    const { stdout } = await promisify(execFile)("claude", ["--version"], {
+    const { stdout } = await promisify(execFile)(command, ["--version"], {
       env,
       timeout: 4000,
       maxBuffer: 16384,

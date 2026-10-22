@@ -259,3 +259,18 @@ test("human records name the options a launch consented to, and only when it had
     "Options:",
   );
 });
+test("human records name a pinned executable and its version", () => {
+  const record = {
+    kind: "task" as const,
+    runtime: "codex",
+    state: "running",
+    cwd: "/src/project",
+  };
+  expect(
+    formatHuman({
+      ...record,
+      executable: { path: "/opt/codex/bin/codex", version: "0.150.0" },
+    }),
+  ).toContain("Executable: /opt/codex/bin/codex (0.150.0)");
+  expect(formatHuman(record)).not.toContain("Executable:");
+});

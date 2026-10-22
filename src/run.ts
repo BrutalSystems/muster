@@ -115,6 +115,11 @@ import { openCodeReachable } from "./reach/opencode.js";
 import { assertClaudePolicy } from "./claude-policy.js";
 import { codexPolicyArgs } from "./codex-policy.js";
 import { CodexRpc } from "./codex-rpc.js";
+import {
+  inspectExecutable,
+  runtimeCommand,
+  type RuntimeExecutable,
+} from "./executable.js";
 import { allocateLoopbackPort, OpenCodeHttp } from "./opencode-http.js";
 import {
   assertOpenCodeVersion,
@@ -189,6 +194,9 @@ function launchFacts(entry: Entry) {
     ...(entry.launch_options !== undefined
       ? { launch_options: [...entry.launch_options] }
       : {}),
+    ...(entry.executable !== undefined
+      ? { executable: { ...entry.executable } }
+      : {}),
   };
 }
 /** Runtime/peer refresh data cannot supply or replace reservation facts. */
@@ -200,6 +208,7 @@ function sessionPeerView(entry: Entry): Record<string, unknown> {
     input_status: _inputStatus,
     inherit_profile: _inheritProfile,
     launch_options: _launchOptions,
+    executable: _executable,
     mcp_selection: _mcpSelection,
     guards: _guards,
     stop_guard_status: _stopGuardStatus,
@@ -513,6 +522,13 @@ export class Muster {
             "not-expressible-remotely",
             `a remote request may not select ${key}; this receiver's configured defaults apply`,
           );
+      // A path names a program on this machine, so a remote caller choosing it
+      // would be choosing what this machine runs.
+      if (raw.executable !== undefined)
+        throw new RequesterPolicyRefusal(
+          "not-expressible-remotely",
+          "a remote request may not name an executable; this receiver runs the runtime on its PATH",
+        );
     }
     const req = runSchema.parse(input);
     if (req.project) {
@@ -667,6 +683,12 @@ export class Muster {
     // composed environment has no PATH or LANG must refuse the launch rather
     // than leave a half-started one behind.
     const agentBase = agentBaseEnv(requester, policy.profile, this.sourceEnv);
+    // Checked before the probes below, which run the same program: a path that
+    // is not this runtime is refused as that, not as a failed policy probe.
+    const executable = req.executable
+      ? await inspectExecutable(req.runtime, req.executable, agentBase)
+      : undefined;
+    const command = runtimeCommand(req.runtime, req.executable);
     const selectedMcp = selectMcp(effective, this.config);
     const selectedPlugins =
       req.runtime === "opencode" ? selectPlugins(effective, this.config) : [];
@@ -705,9 +727,14 @@ export class Muster {
     if (req.runtime === "claude" && permissions.permissions !== "normal")
       await assertClaudePolicy(this.hostEnv);
     if (req.options.includes("restrict-mcp"))
-      await assertRestrictedClaudeVersion(this.hostEnv);
+      await assertRestrictedClaudeVersion(this.hostEnv, undefined, command);
     if (req.runtime === "opencode")
-      await assertOpenCodeVersion(this.hostEnv, "1.18.31", Date.now() + 4000);
+      await assertOpenCodeVersion(
+        this.hostEnv,
+        "1.18.31",
+        Date.now() + 4000,
+        command,
+      );
     // After the driver, not beside resolveModel: the host that runs is
     // `req.host ?? config.host` with `auto` resolving to whatever is available,
     // so only the selected driver knows whether a lifecycle can be honoured.
@@ -737,6 +764,7 @@ export class Muster {
       lifecycle,
       title,
       argv,
+      executable,
     };
   }
   /**
@@ -759,6 +787,7 @@ export class Muster {
     identityName?: string;
     guards?: GuardSnapshot;
     title?: string;
+    executable?: RuntimeExecutable;
     report?: (event: LaunchReservationEvent) => void;
   }): Promise<{ outcome: RunResult } | { entry: Entry }> {
     const {
@@ -788,6 +817,14 @@ export class Muster {
         ...(c.guards ? { guards: c.guards.summary } : {}),
         inherit_profile: req.options.includes("inherit-profile"),
         launch_options: recordedOptions(req.options),
+        ...(c.executable
+          ? {
+              executable: {
+                path: c.executable.path,
+                version: c.executable.version,
+              },
+            }
+          : {}),
         ...(mcpSelection(req) ? { mcp_selection: mcpSelection(req) } : {}),
         ...permissions,
         enforcement,
@@ -1045,9 +1082,11 @@ export class Muster {
     bridgePath?: string;
     selectedPlugins: ReturnType<typeof selectPlugins>;
     deadline: number;
+    executable?: RuntimeExecutable;
   }) {
     const { req, effective, prepared, bridgePath, selectedPlugins, deadline } =
       c;
+    const command = runtimeCommand(req.runtime, req.executable);
     let { argv, codexPolicy, runtimeEnv, entry } = c;
     if (req.runtime !== "opencode")
       // `runtimeEnv`, not the host's: an identity launch relocates
@@ -1071,14 +1110,25 @@ export class Muster {
         prepared.servers,
         req.kind === "task" && !req.options.includes("inherit-profile"),
         req.options.includes("inherit-profile"),
+        command,
       );
       argv.splice(1, 0, ...codexPolicy);
+      // A shared daemon another Codex started runs that Codex's version, so a
+      // session pinned to its own binary is kept off it. `codex exec` has no
+      // such flag.
+      if (
+        c.executable?.noDaemon &&
+        req.kind === "session" &&
+        !argv.includes("--no-daemon")
+      )
+        argv.splice(1, 0, "--no-daemon");
     } else if (req.runtime === "opencode" && req.kind === "session") {
       const port = await allocateLoopbackPort();
       const inheritedMcpNames = await openCodeMcpNames(
         runtimeEnv,
         req.cwd,
         deadline,
+        command,
       );
       const launch = await openCodeSessionLaunch(
         effective,
@@ -1103,6 +1153,7 @@ export class Muster {
         runtimeEnv,
         req.cwd,
         deadline,
+        command,
       );
       const launch = await openCodeTaskLaunch(
         effective,
@@ -1586,7 +1637,9 @@ export class Muster {
       lifecycle,
       title,
       argv: plannedArgv,
+      executable,
     } = await this.plan(req, policy, requester, level);
+    const command = runtimeCommand(req.runtime, req.executable);
     // Before anything is reserved, like the refusals in `plan`. A remote
     // requester is refused because a resumed session carries the whole of
     // that conversation, and the profile holds every conversation its owner
@@ -1611,6 +1664,7 @@ export class Muster {
           guards.summary.bundles.some((b) => b.events.includes("Stop"))
             ? 306
             : 305,
+          command,
         );
       } catch {
         throw new Error(
@@ -1639,6 +1693,7 @@ export class Muster {
       selectedMcp,
       selectedPlugins,
       identityName,
+      executable,
     });
     if ("outcome" in reserved) return reserved.outcome;
     const reservation = reserved.entry;
@@ -1704,6 +1759,7 @@ export class Muster {
         bridgePath,
         selectedPlugins,
         deadline,
+        executable,
       }));
       await this.assertNotCancelled(entry.launchId);
       if (guards) {
@@ -1713,6 +1769,7 @@ export class Muster {
             guards.summary.bundles.some((b) => b.events.includes("Stop"))
               ? 306
               : 305,
+            command,
           );
         } catch {
           throw new Error(
@@ -1746,7 +1803,8 @@ export class Muster {
       if ("outcome" in started) return started.outcome;
       entry = started.entry;
       const { root, launched } = started;
-      if (req.runtime === "codex") rpc = new CodexRpc(resolveEnv, req.cwd);
+      if (req.runtime === "codex")
+        rpc = new CodexRpc(resolveEnv, req.cwd, command);
       return await this.awaitReadiness({
         req,
         entry,

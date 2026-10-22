@@ -29,6 +29,7 @@ import type { RequesterId } from "./requester.js";
 import { RequesterConfigError } from "./requester-policy.js";
 import { parseDuration } from "./duration.js";
 import { assertModelDeclared } from "./providers.js";
+import { runtimeCommand } from "./executable.js";
 export const runSchema = z
   .object({
     runtime: z.enum(["codex", "claude", "opencode"]),
@@ -76,6 +77,11 @@ export const runSchema = z
      * pass-through after `--`: see src/options.ts.
      */
     options: launchOptionsSchema.default([]),
+    /**
+     * An absolute path to run instead of the runtime found on PATH. See
+     * src/executable.ts.
+     */
+    executable: z.string().min(1).optional(),
     args: z.array(z.string()).default([]),
   })
   .strict();
@@ -359,6 +365,7 @@ export function paramsFingerprint(
         ...(req.options.includes("inherit-profile")
           ? [{ inherit_profile: true }]
           : []),
+        ...(req.executable ? [{ executable: req.executable }] : []),
       ]),
     )
     .digest("hex");
@@ -950,7 +957,7 @@ export function launchArgs(
   }
   if (req.runtime === "codex")
     return [
-      "codex",
+      runtimeCommand("codex", req.executable),
       // A shared daemon owns threads outside the launch's process tree.
       // Keep inherited-profile sessions local so identity and stop remain scoped.
       ...(inheritProfile && req.kind === "session" ? ["--no-daemon"] : []),
@@ -1070,7 +1077,7 @@ export function launchArgs(
     },
   };
   return [
-    "claude",
+    runtimeCommand("claude", req.executable),
     ...(req.kind === "task" ? ["-p"] : []),
     "--tools",
     "default",
@@ -1128,7 +1135,7 @@ function normalClaudeArgs(
   const restricted = !!mcpSelection(req);
   if (!inheritProfile) assertNoDefaultBypass(claudeConfigDir(env), req.cwd);
   return [
-    "claude",
+    runtimeCommand("claude", req.executable),
     ...(req.kind === "task" ? ["-p"] : []),
     ...(inheritProfile
       ? [
@@ -1222,7 +1229,7 @@ function writeRootSpellings(path: string): string[] {
 }
 export function launchEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const blocked =
-    /^(CLAUDECODE|CLAUDE_CODE_|CODEX_THREAD_ID$|TMUX$|TMUX_PANE$|MCP_)/;
+    /^(CLAUDECODE|CLAUDE_CODE_|CODEX_THREAD_ID$|CODEX_MANAGED_|TMUX$|TMUX_PANE$|MCP_)/;
   return Object.fromEntries(
     Object.entries(env).filter(
       ([k, v]) => typeof v === "string" && !blocked.test(k),

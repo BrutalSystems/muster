@@ -13,6 +13,7 @@ const records=path.join(codexHome,'threads');fs.mkdirSync(records,{recursive:tru
 const argv=process.argv.slice(2), runtime=path.basename(process.argv[1]).startsWith('claude')?'claude':'codex';
 const live=()=>fs.readdirSync(records).map(f=>JSON.parse(fs.readFileSync(path.join(records,f),'utf8'))).filter(t=>{try{process.kill(t.pid,0);return true;}catch{return false;}});
 if(argv.includes('--version')){console.log(process.env.MUSTER_FAKE_VERSION || 'fake 1');process.exit(0);}
+if(argv.length===1&&argv[0]==='--help'){console.log(process.env.MUSTER_FAKE_HELP ?? 'Usage: codex [OPTIONS]\n      --no-daemon');process.exit(0);}
 if(argv.includes('mcp')&&argv.includes('list')){
  if(process.env.MUSTER_FAKE_MCP_FAIL_CONFIG==='1' && argv.some(v=>v.startsWith('mcp_servers.fixture='))){console.error('config failed');process.exit(1);}
  // Real codex rejects --ignore-user-config on `mcp list`; it is an exec flag.
@@ -80,7 +81,7 @@ if(argv.includes('app-server')){
   // when a test needs it, rather than widening this back to everything.
   const RECORDED=['CODEX_HOME','CLAUDE_CONFIG_DIR','CLAUDE_CODE_OAUTH_TOKEN','OPENCODE_CONFIG_DIR','XDG_DATA_HOME','HOME','PATH','LANG'];
   const env={};for(const k of RECORDED) if(process.env[k]!==undefined) env[k]=process.env[k];
-  const startup={pid:process.pid,id,prompt,argv,runtime,env,intentPresent:fs.existsSync(path.join(process.env.MUSTER_TEST_HOME||root,'launches.jsonl'))};
+  const startup={pid:process.pid,exe:process.argv[1],id,prompt,argv,runtime,env,intentPresent:fs.existsSync(path.join(process.env.MUSTER_TEST_HOME||root,'launches.jsonl'))};
   fs.appendFileSync(path.join(root,'starts.jsonl'),JSON.stringify(startup)+'\n');
   let fd,socket;
   const publish=()=>{

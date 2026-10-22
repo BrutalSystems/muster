@@ -6,6 +6,7 @@ import type { LaunchAnnotations } from "./annotations.js";
 import type { HostCapabilities, HostId, TerminalApp } from "./hosts/types.js";
 import type { Enforcement } from "./enforcement.js";
 import type { LaunchOption } from "./options.js";
+import type { LaunchExecutable } from "./executable.js";
 import type { LaunchPermissions } from "./guard.js";
 import type { McpSummary } from "./mcp.js";
 export type Runtime = "codex" | "claude" | "opencode";
@@ -25,6 +26,7 @@ export type SessionPeer = LaunchPermissions &
       StopGuardStatus | { state: "unknown"; continuation: "none" };
     inherit_profile?: boolean;
     launch_options?: LaunchOption[];
+    executable?: LaunchExecutable;
     mcp_selection?: McpSelection;
     input_status?: InputStatus;
     /**
@@ -82,6 +84,7 @@ export type TaskHandle = LaunchPermissions &
       StopGuardStatus | { state: "unknown"; continuation: "none" };
     inherit_profile?: boolean;
     launch_options?: LaunchOption[];
+    executable?: LaunchExecutable;
     mcp_selection?: McpSelection;
     input_status?: InputStatus;
     enforcement?: Enforcement;

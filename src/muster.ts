@@ -327,6 +327,7 @@ async function main() {
       ["--title", values.title],
       ["--resume", values.resume],
       ["--fork-session", forkSession],
+      ["--executable", values.executable],
     ] as const)
       if (value !== undefined && command !== "run")
         throw new Error(`${name} applies only to run`);
