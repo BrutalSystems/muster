@@ -25,6 +25,18 @@ export const LAUNCH_OPTIONS = [
   "accept-cross-session",
 ] as const;
 export type LaunchOption = (typeof LAUNCH_OPTIONS)[number];
+/**
+ * The named options a launch records about itself: what it consented to,
+ * de-duplicated in `LAUNCH_OPTIONS` order. `report-launch` is left out because
+ * it changes how the caller hears about the launch, not what the launch may
+ * do; `metadata=`, `provenance=` and `guard=` are reported in fields of their
+ * own, and a guard's source path is never stored.
+ */
+export function recordedOptions(options: readonly string[]): LaunchOption[] {
+  return LAUNCH_OPTIONS.filter(
+    (option) => option !== "report-launch" && options.includes(option),
+  );
+}
 export const launchOptionsSchema = z
   .array(z.string())
   .superRefine((options, ctx) => {

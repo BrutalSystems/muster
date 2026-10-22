@@ -241,3 +241,21 @@ test("human output retains Stop failure and exhausted continuation", () => {
     }),
   ).toContain("Stop guard: unknown; continuation none");
 });
+test("human records name the options a launch consented to, and only when it had some", () => {
+  const record = {
+    kind: "session" as const,
+    runtime: "claude",
+    state: "idle",
+    session_id: "12345678-1234-1234-1234-123456789abc",
+    cwd: "/src/project",
+  };
+  expect(
+    formatHuman({
+      ...record,
+      launch_options: ["accept-bypass-warning", "accept-cross-session"],
+    }),
+  ).toContain("Options: accept-bypass-warning, accept-cross-session");
+  expect(formatHuman({ ...record, launch_options: [] })).not.toContain(
+    "Options:",
+  );
+});

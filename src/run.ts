@@ -79,7 +79,11 @@ import {
 import { LaunchLog } from "./log.js";
 import { hosts, selectHost } from "./hosts/index.js";
 import { AGENTS } from "./agents.js";
-import { assertOptionsSupported, screenWorkspace } from "./options.js";
+import {
+  assertOptionsSupported,
+  recordedOptions,
+  screenWorkspace,
+} from "./options.js";
 import { workspaceTrustKey } from "./identity/workspace-key.js";
 import type { TerminalApp } from "./hosts/types.js";
 import type { TerminalHost } from "./hosts/types.js";
@@ -182,6 +186,9 @@ function launchFacts(entry: Entry) {
     ...(entry.inherit_profile !== undefined
       ? { inherit_profile: entry.inherit_profile }
       : {}),
+    ...(entry.launch_options !== undefined
+      ? { launch_options: [...entry.launch_options] }
+      : {}),
   };
 }
 /** Runtime/peer refresh data cannot supply or replace reservation facts. */
@@ -192,6 +199,7 @@ function sessionPeerView(entry: Entry): Record<string, unknown> {
     tracking_error: _trackingError,
     input_status: _inputStatus,
     inherit_profile: _inheritProfile,
+    launch_options: _launchOptions,
     mcp_selection: _mcpSelection,
     guards: _guards,
     stop_guard_status: _stopGuardStatus,
@@ -779,6 +787,7 @@ export class Muster {
         ...launchAnnotations(req.options),
         ...(c.guards ? { guards: c.guards.summary } : {}),
         inherit_profile: req.options.includes("inherit-profile"),
+        launch_options: recordedOptions(req.options),
         ...(mcpSelection(req) ? { mcp_selection: mcpSelection(req) } : {}),
         ...permissions,
         enforcement,
@@ -1651,6 +1660,7 @@ export class Muster {
           requester,
           ...(req.open ? { open: true, terminal } : {}),
           args: req.args,
+          launch_options: recordedOptions(req.options),
           // The RESOLVED name, not req.identity: a remote requester granted
           // exactly one identity names none and gets it anyway, and the audit
           // trail must state the account that was actually used. Not in

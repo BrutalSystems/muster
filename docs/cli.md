@@ -185,6 +185,17 @@ The field records the explicit opt-in, not whether every profile component
 successfully loaded. A normal Claude launch still inherits its profile without
 this option.
 
+`launch_options` lists the named options a launch asked for — for example
+`["inherit-profile", "accept-bypass-warning", "accept-cross-session"]` — once
+each and in a fixed order, so a caller can see what a launch consented to
+(whether it trusted its folder, or will act on messages from other sessions)
+without keeping its own record. It is recorded at reservation, cannot be changed
+through Muster, and appears in `run`, `list`, `wait` and the launch log's
+`intent` record. `[]` means none were asked for; legacy records omit it.
+`report-launch` is not listed, because it changes how the caller hears about the
+launch rather than what the launch may do. `metadata=`, `provenance=` and
+`guard=` have fields of their own, and a guard's source path is never stored.
+
 Profile MCP servers remain enabled. Explicit `--mcp` selections add Muster
 servers; `--mcp none` selects no Muster servers without removing profile servers.
 Muster's configured `default_mcp` is not added in this mode. Codex name collisions
