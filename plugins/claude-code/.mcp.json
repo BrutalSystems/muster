@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@brutalsystems/muster@3.14.0",
+        "@brutalsystems/muster@3.15.0",
         "mcp"
       ]
     }
