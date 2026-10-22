@@ -1016,6 +1016,7 @@ export function launchArgs(
     policy.permissions === "bypass"
       ? { skipDangerousModePermissionPrompt: true }
       : {}),
+    ...crossSessionSettings(req),
     permissions: {
       defaultMode: mode,
       allow: mcp.flatMap((s) =>
@@ -1089,6 +1090,19 @@ export function launchArgs(
   ];
 }
 /**
+ * `--options accept-cross-session`: deliver inbound cross-session messages
+ * instead of holding them for a Deny/Deliver answer nobody is there to give.
+ * Unset, Claude holds a message whose sender's permission-mode class differs
+ * from the session's, and one whose sender asserts no class while the session
+ * bypasses, so an unattended session never takes the turn. `--settings`
+ * outranks every profile source but not managed policy, which can still refuse.
+ */
+function crossSessionSettings(req: RunRequest): Record<string, string> {
+  return req.options.includes("accept-cross-session")
+    ? { crossSessionInbound: "accept" }
+    : {};
+}
+/**
  * A Claude launch exactly as a person would start it in this profile and
  * directory: every setting source (so rules, CLAUDE.md, the env and autoMode
  * blocks, permissions, hooks, the status line, plugins and the profile's own
@@ -1135,9 +1149,12 @@ function normalClaudeArgs(
             ...(req.options.includes("accept-bypass-warning")
               ? { skipDangerousModePermissionPrompt: true }
               : {}),
+            ...crossSessionSettings(req),
           }),
         ]
-      : []),
+      : req.options.includes("accept-cross-session")
+        ? ["--settings", JSON.stringify(crossSessionSettings(req))]
+        : []),
     ...(restricted ? ["--strict-mcp-config", "--no-chrome"] : []),
     ...(mcp.length || restricted
       ? [

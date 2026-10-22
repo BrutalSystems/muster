@@ -14,6 +14,7 @@ deliberate and a retry with the same arguments gets the same answer.
 | Claude session times out after ~30 s, message names an untrusted directory | workspace-trust dialog | trust it once by hand, or `--options auto-approve-path` |
 | Times out, trust ruled out | something else on the session's screen — a login prompt or other one-time confirmation | a person runs the runtime in that directory once; a `--kind task` there shows whether the runtime itself starts |
 | `--unrestricted` Claude launch times out | the Bypass Permissions warning | add `--options accept-bypass-warning` |
+| Claude session never acts on a message from another session; its screen shows "Held message from another session" | Claude holds cross-session messages from a sender of a different permission-mode class, or one that asserts none while the session bypasses | relaunch with `--options accept-cross-session`, after reading what it opens up in docs/permissions.md |
 | `full-access or bypass requires allow_dangerous_flags in config.toml` | `open`/`bypass` not authorised | the operator sets `allow_dangerous_flags = true` at the top level of `~/.muster/config.toml` |
 | Every muster command fails after a config edit | a key placed inside a `[section]` that does not accept it (nested tables are strict), or a bad value | move it or fix it; unknown **top-level** keys are only warned about and ignored |
 | `--options auto-approve-path refused: … ships hooks …` | the directory configures hooks or MCP servers | trust it by hand after reviewing it, or launch without the option |

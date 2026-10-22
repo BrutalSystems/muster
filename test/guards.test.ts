@@ -433,3 +433,38 @@ test("PreToolUse default matcher retains the previous canonical digest", async (
     await m.close();
   }
 });
+
+test("a guarded launch that accepts cross-session messages keeps its hooks", async () => {
+  // stageGuards rewrites the --settings overlay into a file of its own; the
+  // option has to survive that rewrite without displacing the guard's hooks.
+  const { f, m, req } = await setup();
+  let id: string | undefined;
+  try {
+    id = durableId(
+      await m.run({
+        ...req,
+        options: [...req.options, "accept-cross-session"],
+        requestKey: "guard-cross-session",
+      }),
+    );
+    await expect
+      .poll(async () => (await lines(join(f.root, "starts.jsonl"))).length)
+      .toBeGreaterThan(0);
+    const argv = (await lines(join(f.root, "starts.jsonl")))[0]
+      .argv as string[];
+    const settings = JSON.parse(
+      await readFile(argv[argv.indexOf("--settings") + 1]!, "utf8"),
+    );
+    expect(settings).toMatchObject({
+      crossSessionInbound: "accept",
+      sandbox: { enabled: false },
+      permissions: { deny: ["Bash(private-deny-pattern:*)"] },
+    });
+    expect(settings.hooks.PreToolUse[0].hooks[0]).toMatchObject({
+      onFailure: "block",
+    });
+  } finally {
+    if (id) await m.stop(id).catch(() => {});
+    await m.close();
+  }
+});
