@@ -22,6 +22,7 @@ export const LAUNCH_OPTIONS = [
   "restrict-mcp",
   "auto-approve-path",
   "accept-bypass-warning",
+  "accept-cross-session",
 ] as const;
 export type LaunchOption = (typeof LAUNCH_OPTIONS)[number];
 export const launchOptionsSchema = z
@@ -55,6 +56,10 @@ export const launchOptionsSchema = z
  * warning, which only Claude shows and only in bypass. Anywhere else there is
  * no warning to accept, so it is refused rather than carried as a no-op that
  * reads like consent to something.
+ *
+ * `accept-cross-session` sets Claude's `crossSessionInbound` setting, which no
+ * other runtime has. It is not tied to bypass: a sender whose permission-mode
+ * class differs from the session's is held in any mode.
  */
 export function assertOptionsSupported(
   runtime: Runtime,
@@ -92,6 +97,10 @@ export function assertOptionsSupported(
     if (option === "accept-bypass-warning" && runtime !== "claude")
       throw new Error(
         `--options accept-bypass-warning is not supported for ${runtime}: only Claude shows a bypass-permissions warning`,
+      );
+    if (option === "accept-cross-session" && runtime !== "claude")
+      throw new Error(
+        `--options accept-cross-session is not supported for ${runtime}: only Claude holds cross-session messages for approval`,
       );
     if (
       option === "accept-bypass-warning" &&

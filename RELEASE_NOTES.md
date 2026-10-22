@@ -10,6 +10,29 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `--options accept-cross-session` lets an unattended Claude launch act on
+  messages from other sessions. Claude holds a cross-session message behind a
+  Deny/Deliver prompt when the sender's permission-mode class differs from the
+  receiver's, or when the sender asserts none and the receiver bypasses, so an
+  `--unrestricted` session never took the turn. The option sets
+  `crossSessionInbound: "accept"` in the settings Muster passes for that launch
+  only; Muster refuses `--settings` after `--`, so there was no other
+  per-launch way to set it.
+- What it opens up: any local process that can reach the session's
+  cross-session socket can give it work, with the launch's permissions. It is
+  never implied by a level or another option.
+- Claude only; refused for Codex and OpenCode. Not limited to bypass, because
+  a mismatched sender is held in every mode. Managed policy still outranks it.
+  With `guard=`, the guard's hooks and deny rules survive the staged overlay
+  and apply to the work a message starts.
+- Validation: under Claude Code 2.1.308, two guarded `--unrestricted`
+  inherit-profile sessions received the same Tin Can message. Without the
+  option it was held on the Deny/Deliver prompt; with it, it was delivered
+  with no prompt, the guard's PreToolUse hook blocked the command it was
+  written to block, and the session carried out the rest of the request.
+
 ## 3.12.0 — 2026-10-21
 
 - The Claude Code plugin now brings Muster's MCP server. Its `.mcp.json` runs

@@ -183,6 +183,7 @@ silent no-op.
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `auto-approve-path`     | Records the launch directory as trusted in the profile the agent will use, so its one-time dialog does not block the launch. |
 | `accept-bypass-warning` | Accepts Claude's one-time "Bypass Permissions mode" warning for this launch, so an `--unrestricted` session can start.        |
+| `accept-cross-session`  | Delivers inbound cross-session messages to this Claude launch instead of holding them for approval.                          |
 
 `auto-approve-path` needs a runtime with a workspace-trust gate: Claude and
 Codex have one, OpenCode does not and the option is refused for it. The record
@@ -228,6 +229,29 @@ not imply it. Accepting the warning stays visible in the command that did it,
 and `bypass` still needs `allow_dangerous_flags = true`. A bypass session that
 times out without the option says so, rather than the generic "check the
 terminal". Not expressible remotely, like every option.
+
+**`accept-cross-session`** exists because Claude can hold a message from
+another session (its own `SendMessage`, or any other cross-session sender)
+behind a Deny/Deliver prompt instead of letting the session act on it. With
+Claude's `crossSessionInbound` setting unset, a message is held when the
+sender's permission-mode class differs from the receiver's (a prompting
+session messaging a bypass one), and a sender that asserts no class is held
+whenever the receiver bypasses. An unattended session has nobody to answer
+the prompt, so it never takes the turn. The option sets
+`crossSessionInbound: "accept"` in the settings Muster passes for that launch
+only.
+
+**What it opens up:** any local process that can reach the session's
+cross-session socket can give it work, and the session acts with whatever
+permissions the launch has — under `--unrestricted`, without asking. Use it for
+a session that is meant to take work from other sessions, not as a default.
+
+It is Claude-only and refused for Codex and OpenCode. It is not tied to
+bypass, because a mismatched sender is held in every mode, and no level or
+other option implies it. Managed policy outranks the settings Muster passes,
+so a policy that sets `crossSessionInbound` still decides. With a guard
+attached, the guard's hooks and deny rules apply to the work a message
+starts, as to any other turn. Not expressible remotely, like every option.
 
 ### Containment levels
 

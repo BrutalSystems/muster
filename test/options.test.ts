@@ -140,3 +140,81 @@ test("accept-bypass-warning is refused for runtimes with no such warning", () =>
       assertOptionsSupported(runtime, ["accept-bypass-warning"], LEVELS.open),
     ).toThrow(/accept-bypass-warning/);
 });
+
+/**
+ * Claude holds an inbound cross-session message behind a Deny/Deliver dialog
+ * when the sender's permission-mode class differs from the session's, or when
+ * the sender asserts none and the session bypasses. An unattended session has
+ * nobody to answer it, so the message never becomes a turn. The option sets
+ * `crossSessionInbound: "accept"` in the overlay Muster passes for that launch.
+ */
+test("accept-cross-session is a named option", () => {
+  expect(claudeReq({ options: ["accept-cross-session"] }).options).toEqual([
+    "accept-cross-session",
+  ]);
+});
+
+test("accept-cross-session delivers inbound messages in a sealed launch, at any level", () => {
+  for (const level of ["read", "work", "open"])
+    expect(
+      settingsOf(
+        launchArgs(
+          claudeReq({ level, options: ["accept-cross-session"] }),
+          dangerous,
+        ),
+      ).crossSessionInbound,
+    ).toBe("accept");
+});
+
+test("no launch accepts cross-session messages unless it asked to", () => {
+  // Accepting lets any local process that reaches the session give it work, so
+  // it is never implied: not by bypass, and not by inheriting the profile.
+  for (const extra of [
+    { level: "open" },
+    { level: "open", options: ["inherit-profile"] },
+  ])
+    expect(
+      settingsOf(launchArgs(claudeReq(extra), dangerous)),
+    ).not.toHaveProperty("crossSessionInbound");
+  expect(launchArgs(claudeReq({ level: "normal" }), dangerous)).not.toContain(
+    "--settings",
+  );
+});
+
+test("accept-cross-session reaches the profile launches through their overlay", () => {
+  // A normal-level launch passes no --settings of its own, so the option adds
+  // an overlay holding only this; inherit-profile merges it into the one it has.
+  const normal = launchArgs(
+    claudeReq({ level: "normal", options: ["accept-cross-session"] }),
+    dangerous,
+  );
+  expect(settingsOf(normal)).toEqual({ crossSessionInbound: "accept" });
+  expect(normal).not.toContain("--setting-sources");
+  const inherited = launchArgs(
+    claudeReq({
+      level: "open",
+      options: [
+        "inherit-profile",
+        "accept-bypass-warning",
+        "accept-cross-session",
+      ],
+    }),
+    dangerous,
+  );
+  expect(settingsOf(inherited)).toEqual({
+    sandbox: { enabled: false },
+    skipDangerousModePermissionPrompt: true,
+    crossSessionInbound: "accept",
+  });
+});
+
+test("accept-cross-session is refused for runtimes with no cross-session hold", () => {
+  for (const runtime of ["codex", "opencode"] as const)
+    expect(() =>
+      assertOptionsSupported(runtime, ["accept-cross-session"], LEVELS.open),
+    ).toThrow(/accept-cross-session/);
+  for (const level of ["read", "work", "open"] as const)
+    expect(() =>
+      assertOptionsSupported("claude", ["accept-cross-session"], LEVELS[level]),
+    ).not.toThrow();
+});
