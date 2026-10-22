@@ -10,6 +10,23 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `run`, `list` and `wait` now report `launch_options`: the named options a
+  launch asked for (`inherit-profile`, `restrict-mcp`, `auto-approve-path`,
+  `accept-bypass-warning`, `accept-cross-session`), once each in a fixed order.
+  A controller can see whether a worker will act on a message from another
+  session, and an operator can see which launches trusted their folder or
+  skipped the bypass warning. Until now no named option was recorded except
+  `inherit_profile`.
+- It is recorded once at reservation and cannot be changed. `[]` means none
+  were asked for; records from earlier versions omit the field. The launch
+  log's `intent` record carries it too, including in metadata-only logging.
+  Human output adds an `Options:` line when there are any.
+- Not recorded: `report-launch`, which changes how the caller hears about a
+  launch rather than what it may do, and `metadata=`, `provenance=` and
+  `guard=`, which have fields of their own.
+
 ## 3.13.0 — 2026-10-22
 
 - `--options accept-cross-session` lets an unattended Claude launch act on

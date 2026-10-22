@@ -17,6 +17,7 @@ type RecordView = LaunchAnnotations & {
   stop_guard_status?:
     StopGuardStatus | { state: "unknown"; continuation: "none" };
   inherit_profile?: boolean;
+  launch_options?: string[];
   mcp_selection?: McpSelection;
   input_status?: InputStatus;
   mcp?: string[];
@@ -179,6 +180,8 @@ function recordHuman(record: RecordView, color: boolean): string {
   }
   if (record.inherit_profile)
     lines.push(field("Profile", "inherited (full access)"));
+  if (record.launch_options?.length)
+    lines.push(field("Options", record.launch_options.map(clean).join(", ")));
   if (record.mcp_selection)
     lines.push(
       field(

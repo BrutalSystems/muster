@@ -2,6 +2,7 @@ import type { GuardSummary } from "./guards.js";
 import type { McpSelection } from "./mcp-selection.js";
 import { unknownInputStatus, type InputStatus } from "./input-status.js";
 import type { LaunchAnnotations } from "./annotations.js";
+import type { LaunchOption } from "./options.js";
 import { mkdir, readFile, writeFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -37,6 +38,8 @@ export type Entry = Partial<LaunchPermissions & LaunchAnnotations> & {
   startingDisplay?: { name: string; title: string };
   stop_guard_status?: StopGuardStatus;
   inherit_profile?: boolean;
+  /** Named options the launch consented to; absent on legacy records. */
+  launch_options?: LaunchOption[];
   mcp_selection?: McpSelection;
   /** Last bounded observation; screen text is never stored. */
   input_status?: InputStatus;
@@ -406,6 +409,7 @@ export class Registry {
         | "startingDisplay"
         | "guards"
         | "inherit_profile"
+        | "launch_options"
         | "mcp_selection"
         | "metadata"
         | "provenance"
@@ -660,6 +664,7 @@ export class Registry {
         "guards",
         "startingDisplay",
         "inherit_profile",
+        "launch_options",
         "mcp_selection",
       ] as const)
         if (key in patch)
