@@ -10,6 +10,18 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- `muster open <id> [APP]` (`open` through MCP, with `--allow-launch`) opens a
+  terminal window on a session that is already running: one launched without
+  `--open`, or whose window was closed. It uses the same apps and default as
+  `run --open`, and takes a durable id, launch id or peer name, so the tmux
+  window id is no longer needed to get a window back.
+- Each call opens another window, and tmux shows the same session in all of
+  them. It is refused for an unknown id, a task, a pty or macos-terminal
+  session, a session that has ended or whose tmux window has gone, and an app
+  that is unknown or not installed.
+
 ## 3.15.0 — 2026-10-22
 
 - `run --executable /abs/path` (`executable` through MCP) runs that runtime

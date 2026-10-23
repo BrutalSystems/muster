@@ -124,6 +124,7 @@ test("MCP uses the same tools, no stdout diagnostics, and closing stops owned pt
     const tools = await client.listTools();
     expect(tools.tools.map((t) => t.name).sort()).toEqual([
       "list",
+      "open",
       "output",
       "run",
       "stop",

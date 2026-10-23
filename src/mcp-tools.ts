@@ -1,5 +1,5 @@
 /**
- * The `run`, `list`, `stop`, `output` and `title` tools exactly as the MCP server
+ * The `run`, `list`, `stop`, `output`, `title` and `open` tools exactly as the MCP server
  * advertises them.
  *
  * Extracted from `src/muster.ts` so it can be ASSERTED against `runSchema`
@@ -240,6 +240,33 @@ export const MCP_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: "open",
+    title: "Open session window",
+    annotations: {
+      title: "Open session window",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    description:
+      "Open a terminal window on a running tmux session by durable id or unambiguous peer name, as run's open does at launch. Each call opens another window; tmux mirrors them. Refused for tasks, pty sessions and ended sessions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", minLength: 1 },
+        app: {
+          type: "string",
+          pattern: "^[a-zA-Z0-9_-]+$",
+          description:
+            "terminal, iterm2, ghostty, or a name defined under [open.apps] in config. Omitted uses the configured default.",
+        },
+      },
+      required: ["id"],
+      additionalProperties: false,
+    },
+  },
 ] as const;
 /**
  * runSchema keys deliberately absent from the advertised `run` inputSchema.
@@ -259,9 +286,9 @@ export const READ_ONLY_TOOLS = ["list", "output"] as const;
 /**
  * Added by `muster mcp --allow-launch`, the deliberate grant. `title` is here
  * rather than above because it changes a running session, and the read-only
- * set is defined as changing nothing.
+ * set is defined as changing nothing. `open` puts a window on the desktop.
  */
-export const LAUNCH_TOOLS = ["run", "stop", "title"] as const;
+export const LAUNCH_TOOLS = ["run", "stop", "title", "open"] as const;
 export function mcpToolNames(allowLaunch: boolean): string[] {
   return allowLaunch
     ? [...READ_ONLY_TOOLS, ...LAUNCH_TOOLS]

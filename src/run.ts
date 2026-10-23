@@ -158,6 +158,16 @@ export type LaunchReservationEvent = {
   provisional?: true;
 };
 /** Only starting rows use this fallback; a runtime identity is never fabricated. */
+/** Why `--open` or `muster open` cannot start the selected terminal. */
+function openUnavailable(
+  verb: string,
+  terminal: TerminalApp,
+  opener: readonly string[] | undefined,
+) {
+  return opener
+    ? `${verb}: the command for "${terminal}" was not found (${opener[0]}); check [open.apps.${terminal}] in config.toml, and that tmux is installed`
+    : `${verb} requires the selected terminal (${terminal}) installed on macOS and tmux`;
+}
 function startingView(entry: Entry) {
   if (entry.status !== "starting") return {};
   const fallback = provisionalTitle(entry);
@@ -716,11 +726,7 @@ export class Muster {
       req.open &&
       (!driver?.open || !(await driver.openAvailable?.(terminal, opener)))
     )
-      throw new Error(
-        opener
-          ? `--open: the command for "${terminal}" was not found (${opener[0]}); check [open.apps.${terminal}] in config.toml, and that tmux is installed`
-          : `--open requires the selected terminal (${terminal}) installed on macOS and tmux`,
-      );
+      throw new Error(openUnavailable("--open", terminal, opener));
     // Managed policy is refused because muster cannot prove its own inline
     // settings win over it. A normal launch has no settings of muster's to
     // prove, and obeys managed policy exactly as a hand launch does.
@@ -2137,6 +2143,36 @@ export class Muster {
       peer: { ...entry.peer!, title: text },
     });
     return { id: entry.id, title: text };
+  }
+  /**
+   * Open a terminal window on a running tmux session, as `--open` does at
+   * launch: the same config, default app and [open.apps] templates. A second
+   * window on a session that already has one is allowed; tmux mirrors them.
+   */
+  async open(id: string, app?: string, requester: RequesterId = LOCAL) {
+    const entry = await this.find(id);
+    assertMayAct(entry, requester);
+    const driver = this.drivers.find((d) => d.id === entry.host);
+    const refusal =
+      entry.kind !== "session"
+        ? "this is a task"
+        : entry.status !== "running"
+          ? `this session is ${entry.status}`
+          : !driver?.open || !entry.hostRef
+            ? `this session is hosted on ${entry.host ?? "no host"}`
+            : // The record can lag a window killed from outside Muster, and
+              // attaching to a missing target opens a window that just errors.
+              !(await driver.list()).some((s) => s.hostRef === entry.hostRef)
+              ? "its tmux window is gone"
+              : undefined;
+    if (refusal)
+      throw new Error(`open applies to a running tmux session; ${refusal}`);
+    const terminal = resolveTerminal({ terminal: app }, this.config);
+    const opener = this.config.open.apps[terminal]?.command;
+    if (!(await driver!.openAvailable?.(terminal, opener)))
+      throw new Error(openUnavailable("open", terminal, opener));
+    await driver!.open!(entry.hostRef!, Date.now() + 10000, terminal, opener);
+    return { id: entry.id, opened: true, terminal };
   }
   async stop(id: string, requester: RequesterId = LOCAL) {
     const entry = await this.find(id);

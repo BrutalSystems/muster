@@ -186,6 +186,25 @@ half, fails the launch, as a missing built-in app does. The built-in names `term
 cannot be redefined, and an unknown name is refused before anything is started.
 Configured apps work on any platform that has tmux.
 
+### Opening a window later
+
+`muster open <id> [APP]` (MCP `open`, with `id` and an optional `app`) opens a
+window on a session that is already running, for one launched without `--open`
+or whose window was closed. It takes the same apps as `--open`: a built-in name
+or one under `[open.apps]`, defaulting to `terminal` in `config.toml`. The id is
+a durable id, launch id or unambiguous peer name, so you never need the tmux
+window id.
+
+```sh
+muster open simple-cms-46          # the configured default app
+muster open simple-cms-46 kitty    # a named one
+```
+
+Each call opens another window; tmux shows the same session in all of them. It
+is refused for an unknown id, a task, a pty or macos-terminal session, a session
+that has ended or whose tmux window has gone, and an app that is unknown or not
+installed.
+
 Auto-selection tries tmux, then pty. Every peer includes `host`, `capabilities`
 and `attach_hint`. Watchability is separate from the runtime's idle/busy state.
 

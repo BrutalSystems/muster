@@ -543,7 +543,7 @@ test("Muster's own MCP server is read-only by default and rejects launch calls",
     });
     expect(refused).toMatchObject({ isError: true });
     expect((refused.content as any)[0].text).toContain("--allow-launch");
-    for (const name of ["stop", "title", "newly_advertised_tool"])
+    for (const name of ["stop", "title", "open", "newly_advertised_tool"])
       expect(
         await readOnly.callTool({
           name,
@@ -558,7 +558,7 @@ test("Muster's own MCP server is read-only by default and rejects launch calls",
   const granted = await connect(["mcp", "--allow-launch"]);
   try {
     expect((await granted.listTools()).tools.map((t) => t.name).sort()).toEqual(
-      ["list", "output", "run", "stop", "title"],
+      ["list", "open", "output", "run", "stop", "title"],
     );
   } finally {
     await granted.close();

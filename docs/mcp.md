@@ -125,7 +125,8 @@ tincan --version
 
 Registering Muster itself is the one case to think twice about. A definition
 whose command runs `muster mcp --allow-launch` gives every session that selects
-it `run`, `stop` and `title` as well as `list` and `output` — launch authority,
+it `run`, `stop`, `title` and `open` as well as `list` and `output` — launch
+authority,
 held by an agent rather than by you. Put it in `default_mcp` and every session
 muster launches can launch more, which is the propagation the child
 restrictions above exist to prevent; `max_concurrent` caps simultaneous
@@ -196,10 +197,11 @@ deliberate grant: `--allow-launch`.
 | Started as | Tools exposed |
 | --- | --- |
 | `muster mcp` (or `muster` with stdin not a terminal) | `list`, `output` |
-| `muster mcp --allow-launch` | `list`, `output`, `run`, `stop`, `title` |
+| `muster mcp --allow-launch` | `list`, `output`, `run`, `stop`, `title`, `open` |
 
 The read-only server can see what Muster owns and read a task's output; it
-cannot start, stop or retitle anything. A tool it does not expose is refused
+cannot start, stop, retitle or open a window on anything. A tool it does not
+expose is refused
 when called, not merely left out of the listing, so a client cannot reach `run`
 by naming it.
 

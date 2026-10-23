@@ -40,6 +40,13 @@ test("annotations say what each tool does to the machine", () => {
       idempotentHint: true,
       openWorldHint: false,
     },
+    // Each call opens another window.
+    open: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
   });
 });
 

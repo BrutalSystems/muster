@@ -214,6 +214,16 @@ export const COMMANDS: Command[] = [
     examples: ["muster title simple-cms-46 'reviewing #48'"],
   },
   {
+    name: "open",
+    summary: "open a terminal window on a running tmux session",
+    synopsis: "muster open <id> [APP] [--format json|human]",
+    options: [["--format FORMAT", "json (default) or human"]],
+    notes: [
+      "APP is terminal, iterm2, ghostty (macOS) or a name from [open.apps] in config.toml, defaulting to the configured terminal, as for run --open. Each call opens another window. Refused for tasks, pty sessions and ended sessions.",
+    ],
+    examples: ["muster open simple-cms-46", "muster open simple-cms-46 kitty"],
+  },
+  {
     name: "identities",
     summary: "show configured identities",
     synopsis: "muster identities [--format json|human]",

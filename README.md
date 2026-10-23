@@ -162,7 +162,7 @@ What that verification covers is in [Verification](docs/verification.md).
    ```
 
    It is read-only by default too. `muster mcp install --allow-launch` adds
-   `run`, `stop` and `title`, and every session in that profile can then
+   `run`, `stop`, `title` and `open`, and every session in that profile can then
    launch and stop sessions. `muster mcp status` shows which you have. Use the
    plugin's server or this one, not both: see
    [plugin or registration](docs/mcp.md#the-plugins-server-or-your-own).
