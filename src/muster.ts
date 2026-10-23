@@ -41,6 +41,15 @@ const idSchema = z.object({ id: z.string().min(1) }).strict();
 const titleSchema = z
   .object({ id: z.string().min(1), title: z.string().min(1) })
   .strict();
+const openSchema = z
+  .object({
+    id: z.string().min(1),
+    app: z
+      .string()
+      .regex(/^[a-zA-Z0-9_-]+$/)
+      .optional(),
+  })
+  .strict();
 const { version } = createRequire(import.meta.url)("../package.json") as {
   version: string;
 };
@@ -244,6 +253,10 @@ async function main() {
           case "title": {
             const { id, title } = titleSchema.parse(args);
             return text(await muster.title(id, title));
+          }
+          case "open": {
+            const { id, app } = openSchema.parse(args);
+            return text(await muster.open(id, app));
           }
           default:
             throw new Error(`Unknown tool ${params.name}`);
@@ -546,6 +559,20 @@ async function main() {
         throw new Error("title requires an id and the title text");
       const { id } = idSchema.parse({ id: positionals[0] });
       print(await muster.title(id, positionals[1]!));
+    } else if (command === "open") {
+      // The app is positional, as `--open APP` takes it at launch; `--terminal`
+      // is deprecated and not carried over to a new command.
+      if (
+        positionals.length < 1 ||
+        positionals.length > 2 ||
+        Object.keys(values).length
+      )
+        throw new Error("open requires an id and optionally an app");
+      const { id, app } = openSchema.parse({
+        id: positionals[0],
+        app: positionals[1],
+      });
+      print(await muster.open(id, app));
     } else if (command === "wait") {
       if (positionals.length !== 1 || Object.keys(values).length)
         throw new Error("wait requires exactly one id");

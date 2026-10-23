@@ -266,6 +266,30 @@ test("title on an unknown id says so", async () => {
   ).rejects.toThrow(/\[muster\] unknown: /);
 }, 20000);
 
+test("open takes an id and at most an app", async () => {
+  const f = await fixture();
+  const run = promisify(execFile);
+  await expect(
+    run(process.execPath, [cli, "open"], { env: f.env }),
+  ).rejects.toThrow(/open requires an id and optionally an app/);
+  await expect(
+    run(process.execPath, [cli, "open", "id", "app", "extra"], { env: f.env }),
+  ).rejects.toThrow(/open requires an id and optionally an app/);
+  await expect(
+    run(process.execPath, [cli, "open", "id", "--terminal", "wez"], {
+      env: f.env,
+    }),
+  ).rejects.toThrow(/open requires an id and optionally an app/);
+}, 20000);
+
+test("open on an unknown id says so", async () => {
+  const f = await fixture();
+  const run = promisify(execFile);
+  await expect(
+    run(process.execPath, [cli, "open", "no-such-run"], { env: f.env }),
+  ).rejects.toThrow(/\[muster\] unknown: /);
+}, 20000);
+
 test("--title is refused outside run rather than ignored", async () => {
   const f = await fixture();
   const run = promisify(execFile);
