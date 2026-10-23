@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.16.0 — 2026-10-23
 
 - `muster open <id> [APP]` (`open` through MCP, with `--allow-launch`) opens a
   terminal window on a session that is already running: one launched without
