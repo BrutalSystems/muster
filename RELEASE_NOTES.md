@@ -10,6 +10,16 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
+## Unreleased
+
+- A Claude identity launches the first time. `setup-identity` gets its
+  credential from `claude setup-token`, which never runs Claude Code's
+  first-run setup, so every launch under a new Claude identity stopped on the
+  theme picker and the security notes and failed after 30 seconds with "no
+  Claude session registry found". Each launch's copy of the identity is now
+  marked as having finished that setup. The identity itself is not changed, so
+  existing identities are fixed without running `setup-identity` again (#91).
+
 ## 3.16.0 — 2026-10-23
 
 - `muster open <id> [APP]` (`open` through MCP, with `--allow-launch`) opens a
