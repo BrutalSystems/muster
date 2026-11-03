@@ -68,6 +68,7 @@ export async function copyIdentity(
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
   }
+  if (meta.agent === "claude") await markClaudeOnboarded(to);
   return to;
 }
 /**
@@ -111,6 +112,32 @@ export async function setWorkspaceTrust(
   copyPath: string,
   cwd: string,
 ): Promise<void> {
+  await editClaudeJson(copyPath, (data) => {
+    const projects = (data.projects ?? {}) as Record<string, unknown>;
+    const existing = (projects[cwd] ?? {}) as Record<string, unknown>;
+    projects[cwd] = { ...existing, hasTrustDialogAccepted: true };
+    data.projects = projects;
+  });
+}
+/**
+ * Mark Claude Code's first-run setup as done, inside a copy Muster just created
+ * (#91). `claude setup-token` never runs that setup, so a template it produced
+ * has no `hasCompletedOnboarding`, and a launch from it opened on the theme
+ * picker and then the security notes — screens a prompted launch never answers,
+ * so it sat there until resolution gave up at the deadline. That one flag skips
+ * both. Only the copy is written, never the template, and never a profile the
+ * operator uses directly, so the operator's own first run is still theirs.
+ */
+async function markClaudeOnboarded(copyPath: string): Promise<void> {
+  await editClaudeJson(copyPath, (data) => {
+    data.hasCompletedOnboarding = true;
+  });
+}
+/** Read-modify-write a copy's `.claude.json`, keeping every key it does not touch. */
+async function editClaudeJson(
+  copyPath: string,
+  edit: (data: Record<string, unknown>) => void,
+): Promise<void> {
   const file = join(copyPath, ".claude.json");
   let data: Record<string, unknown> = {};
   let raw: string | undefined;
@@ -133,10 +160,7 @@ export async function setWorkspaceTrust(
       // an agent that re-onboards, or does not start at all, with no signal.
       throw new Error(`${file} exists but is not valid JSON: ${String(e)}`);
     }
-  const projects = (data.projects ?? {}) as Record<string, unknown>;
-  const existing = (projects[cwd] ?? {}) as Record<string, unknown>;
-  projects[cwd] = { ...existing, hasTrustDialogAccepted: true };
-  data.projects = projects;
+  edit(data);
   await writeFile(file, JSON.stringify(data), { mode: 0o600 });
 }
 function parses(text: string): boolean {

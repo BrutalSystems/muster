@@ -320,3 +320,47 @@ test("setCodexWorkspaceTrust rejects a config.toml it cannot read or parse", asy
   await mkdir(join(isdir, "config.toml"));
   await expect(setCodexWorkspaceTrust(isdir, "/work/thing")).rejects.toThrow();
 });
+
+// #91: `claude setup-token` never runs Claude Code's first-run setup, so a
+// template it produced has no `hasCompletedOnboarding`. A launch from a copy of
+// it opened on the theme picker and the security notes, waiting for keys a
+// prompted launch never sends, until resolution gave up at the deadline.
+test("a claude copy is marked onboarded, keeping the template's other keys", async () => {
+  const { home, meta, dir } = await template("claude");
+  const original = JSON.stringify({ userID: "u1", firstStartVersion: "2" });
+  await writeFile(join(dir, ".claude.json"), original);
+  const copy = await copyIdentity(home, "id1", meta, "launch-onboard");
+  const d = JSON.parse(await readFile(join(copy, ".claude.json"), "utf8"));
+  expect(d.hasCompletedOnboarding).toBe(true);
+  expect(d.userID).toBe("u1");
+  expect(d.firstStartVersion).toBe("2");
+  // The template itself is never written: only the per-launch copy is.
+  expect(await readFile(join(dir, ".claude.json"), "utf8")).toBe(original);
+});
+
+test("a claude template with no .claude.json still yields an onboarded copy", async () => {
+  const home = await mkdtemp(join(tmpdir(), "mu-icopy-"));
+  const meta = { agent: "claude" as const, created };
+  await writeIdentity(home, "bare", meta);
+  const copy = await copyIdentity(home, "bare", meta, "launch-onboard-bare");
+  const d = JSON.parse(await readFile(join(copy, ".claude.json"), "utf8"));
+  expect(d.hasCompletedOnboarding).toBe(true);
+});
+
+test("a claude template whose .claude.json does not parse fails the copy", async () => {
+  // Overwriting it would drop whatever the template's login wrote, and the
+  // agent would start from a state nobody chose.
+  const { home, meta, dir } = await template("claude");
+  await writeFile(join(dir, ".claude.json"), "{not json");
+  await expect(
+    copyIdentity(home, "id1", meta, "launch-onboard-broken"),
+  ).rejects.toThrow(/not valid JSON/);
+});
+
+test("codex and opencode copies are not given a .claude.json", async () => {
+  for (const agent of ["codex", "opencode"] as const) {
+    const { home, meta } = await template(agent);
+    const copy = await copyIdentity(home, "id1", meta, `launch-${agent}-x`);
+    await expect(stat(join(copy, ".claude.json"))).rejects.toThrow();
+  }
+});

@@ -164,6 +164,15 @@ above: it only ever writes to the per-launch copy, never to the operator's own
 without `--identity` still requires the operator to have trusted the directory
 themselves beforehand.
 
+It also marks Claude Code's first-run setup as done in that copy
+(`hasCompletedOnboarding`). `claude setup-token` never runs that setup, so a
+template made by `setup-identity` has never seen the theme picker or the
+security notes, and a launch from it would stop on them, waiting for input a
+prompted launch never sends, until Muster gave up after 30 seconds. Setting the
+flag means Muster acknowledges those screens for you. As with trust, only the
+per-launch copy is written: the template, and any profile you use directly,
+keep their own first run.
+
 Automated tests use fake runtimes, so they prove the plumbing — the copy, the
 variables, the trust flag, the lifecycle — but not that a real agent starts
 authenticated from a copy. See
