@@ -10,7 +10,7 @@ interface or permission-default change, minor for a feature, patch for a fix.
 Before 1.0.0 the minor carried the breaking-change signal and features shipped
 as patches, so do not read an old entry under the new rule.
 
-## Unreleased
+## 3.16.1 — 2026-11-03
 
 - A Claude identity launches the first time. `setup-identity` gets its
   credential from `claude setup-token`, which never runs Claude Code's
